@@ -60,7 +60,10 @@ def cmd_expand(args: argparse.Namespace) -> int:
     print(f"\nsweep: {definition.name}")
     print(f"  server groups:      {len(groups)}")
     print(f"  phases per group:   {len(groups[0].phases) if groups else 0}")
-    print(f"  repetitions:        {definition.repetitions} (+{definition.warmup_repetitions} warmup)")
+    print(
+        f"  repetitions:        {definition.repetitions} "
+        f"(+{definition.warmup_repetitions} warmup)"
+    )
     print(f"  total measurements: {sum(len(g.phases) for g in groups) * reps}")
     print("\ngroups:")
     for i, g in enumerate(groups):

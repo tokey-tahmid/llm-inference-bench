@@ -9,6 +9,8 @@ That failure is silent in every aggregate number, so it is pinned down here.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from llm_inference_bench.workload import (
@@ -25,8 +27,8 @@ class StubTokenizer:
     """Minimal stand-in. The generator only needs vocabulary bounds and decode."""
 
     vocab_size = 5000
-    all_special_ids = [0, 1, 2, 3]
-    added_tokens_encoder: dict[str, int] = {}
+    all_special_ids: ClassVar[list[int]] = [0, 1, 2, 3]
+    added_tokens_encoder: ClassVar[dict[str, int]] = {}
 
     def convert_tokens_to_ids(self, token: str) -> int:  # pragma: no cover - unused path
         return 0

@@ -245,10 +245,9 @@ class SweepDefinition:
         untested, e.g. a 32B model at TP=1 which cannot fit in 40GB. Excluding it
         is honest bookkeeping; the README says why it is absent.
         """
-        for rule in self.exclude:
-            if all(combo.get(k) == v for k, v in rule.items()):
-                return True
-        return False
+        return any(
+            all(combo.get(k) == v for k, v in rule.items()) for rule in self.exclude
+        )
 
     def expand(self) -> list[ServerGroup]:
         """Cartesian product over server axes, each carrying all phase combinations."""
@@ -281,13 +280,23 @@ class SweepDefinition:
                 model_id=model_key,
                 model_revision=model_info.get("revision"),
                 tensor_parallel_size=int(
-                    combo.get("tensor_parallel_size", self.engine_defaults.get("tensor_parallel_size", 1))
+                    combo.get(
+                        "tensor_parallel_size",
+                        self.engine_defaults.get("tensor_parallel_size", 1),
+                    )
                 ),
                 pipeline_parallel_size=int(
-                    combo.get("pipeline_parallel_size", self.engine_defaults.get("pipeline_parallel_size", 1))
+                    combo.get(
+                        "pipeline_parallel_size",
+                        self.engine_defaults.get("pipeline_parallel_size", 1),
+                    )
                 ),
-                max_model_len=combo.get("max_model_len", self.engine_defaults.get("max_model_len")),
-                max_num_seqs=int(combo.get("max_num_seqs", self.engine_defaults.get("max_num_seqs", 256))),
+                max_model_len=combo.get(
+                    "max_model_len", self.engine_defaults.get("max_model_len")
+                ),
+                max_num_seqs=int(
+                    combo.get("max_num_seqs", self.engine_defaults.get("max_num_seqs", 256))
+                ),
                 gpu_memory_utilization=float(
                     combo.get(
                         "gpu_memory_utilization",
@@ -339,7 +348,11 @@ class SweepDefinition:
             phases_per_group=len(phases),
             repetitions=self.repetitions,
             warmup=self.warmup_repetitions,
-            total_measurements=len(groups) * len(phases) * self.repetitions,
+            # Warmup runs are recorded artifacts, so they count toward the plan
+            # and toward the allocation. Excluding them understated both.
+            total_measurements=(
+                len(groups) * len(phases) * (self.repetitions + self.warmup_repetitions)
+            ),
         )
         return groups
 

@@ -10,16 +10,21 @@
 #   help_<backend>.txt          verbatim --help from the pinned image
 #   capabilities_<backend>.json version, and which declared flags actually exist
 #
-# Runs on the cpu partition: no GPU is needed to print a help text.
+# Runs on the GPU partition, which is NOT a comfort choice: vLLM builds its
+# argparse defaults through pydantic dataclasses that resolve a device at import,
+# so `vllm serve --help` raises "Failed to infer device type" on a CPU node
+# (capability probe 5147030). SGLang dumps help fine on CPU, but running both on
+# the same node keeps the probe representative of the real launch environment.
+# Cost is a couple of minutes under qos=test.
 #
 #SBATCH --job-name=lib-capprobe
 #SBATCH --account=p201362
-#SBATCH --partition=cpu
-#SBATCH --qos=short
+#SBATCH --partition=gpu
+#SBATCH --qos=test
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --time=00:45:00
+#SBATCH --cpus-per-task=32
+#SBATCH --time=00:25:00
 #SBATCH --output=/mnt/tier2/project/p201362/ttahmid/inference-work/logs/capprobe_%j.out
 
 set -euo pipefail
@@ -78,12 +83,11 @@ for b in available_backends():
 # node's tmpfs; only the read-only weight cache points at project storage.
 apptainer_exec() {
     local sif="$1"; shift
-    apptainer exec --cleanenv \
+    apptainer exec --nv --cleanenv \
         --bind "${LIB_DATA}:${LIB_DATA}:rw" \
         --env "HF_HOME=${HF_HOME}" \
         --env "HF_HUB_CACHE=${HF_HUB_CACHE}" \
         --env "TMPDIR=/tmp" \
-        --env "HOME=/tmp" \
         --env "VLLM_CACHE_ROOT=/tmp/vllm_cache" \
         --env "TRITON_CACHE_DIR=/tmp/triton_cache" \
         --env "TORCHINDUCTOR_CACHE_DIR=/tmp/inductor_cache" \

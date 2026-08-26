@@ -25,7 +25,7 @@ combination is recorded as an ``unsupported`` artifact, never quietly skipped.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -49,14 +49,28 @@ class SGLangAdapter(BackendAdapter):
             Capability.MULTI_NODE,
             Capability.PROMETHEUS_METRICS,
             Capability.IGNORE_EOS,
-            # Intentionally absent until probe_capabilities.sh confirms them
-            # against the pinned image:
-            #   Capability.SPEC_DECODE_NGRAM
-            #   Capability.BLOCK_SIZE          (no directly equivalent knob)
-            #   Capability.KV_CACHE_DTYPE_FP8
+            # Both confirmed present in sglang 0.5.18 by capability probe 5147030,
+            # which caught them as UNDERCLAIMs against the pinned image:
+            #   --speculative-algorithm accepts NGRAM
+            #   --kv-cache-dtype accepts fp8_e5m2 / fp8_e4m3
+            Capability.SPEC_DECODE_NGRAM,
+            Capability.KV_CACHE_DTYPE_FP8,
+            # SGLang calls the KV paging granularity --page-size where vLLM calls
+            # it --block-size. Same axis, different vocabulary, which is exactly
+            # the kind of difference the adapter layer exists to absorb. Note for
+            # any cross-backend block-size comparison: the two engines have
+            # different defaults and different valid value sets, so matched
+            # numeric values are matched granularity but not a matched baseline.
+            Capability.BLOCK_SIZE,
+            # Still absent, verified rather than assumed:
             #   Capability.SPEC_DECODE_METRICS
         }
     )
+
+    # vLLM accepts a bare "fp8" as an alias for fp8_e4m3; SGLang does not and
+    # requires the format to be named. Normalising here rather than in the sweep
+    # config keeps the YAML backend-neutral, which is the point of the abstraction.
+    _KV_DTYPE_ALIASES: ClassVar[dict[str, str]] = {"fp8": "fp8_e4m3"}
 
     def health_path(self) -> str:
         # /health returns 200 once the HTTP layer is up, but the model may still
@@ -93,6 +107,15 @@ class SGLangAdapter(BackendAdapter):
         if cfg.max_model_len is not None:
             argv += ["--context-length", str(cfg.max_model_len)]
 
+        if cfg.block_size is not None:
+            argv += ["--page-size", str(cfg.block_size)]
+
+        if cfg.kv_cache_dtype and cfg.kv_cache_dtype != "auto":
+            argv += [
+                "--kv-cache-dtype",
+                self._KV_DTYPE_ALIASES.get(cfg.kv_cache_dtype, cfg.kv_cache_dtype),
+            ]
+
         # Explicit in both directions. RadixAttention defaults to on.
         if not cfg.enable_prefix_caching:
             argv += ["--disable-radix-cache"]
@@ -110,12 +133,24 @@ class SGLangAdapter(BackendAdapter):
                 str(spec.num_speculative_tokens),
             ]
         elif spec.mode is SpecDecodeMode.NGRAM:
-            # Guarded by unsupported_reasons(); reaching here means the capability
-            # set was widened without adding the flag translation.
-            raise NotImplementedError(
-                "n-gram speculative decoding not yet mapped for SGLang; "
-                "confirm the flag name via slurm/probe_capabilities.sh first"
-            )
+            # SGLang 0.5.18 supports NGRAM, confirmed against the pinned image.
+            #
+            # IMPORTANT for the backend-vs-backend writeup: the n-gram knobs are
+            # NOT equivalent across engines and are deliberately not forced to
+            # look equivalent. vLLM parameterises a prompt-lookup window
+            # (prompt_lookup_min/max); SGLang parameterises a suffix-automaton
+            # trie with BFS breadth and depth limits
+            # (--speculative-ngram-max-trie-depth, --speculative-ngram-*-bfs-breadth).
+            # Mapping one onto the other would invent an equivalence that does
+            # not exist. Only the draft-token count, which genuinely means the
+            # same thing on both, is carried across; the engine defaults govern
+            # the rest, and any spec-decode comparison must say so.
+            argv += [
+                "--speculative-algorithm",
+                "NGRAM",
+                "--speculative-num-draft-tokens",
+                str(spec.num_speculative_tokens),
+            ]
 
         argv += list(cfg.extra_args)
         return argv

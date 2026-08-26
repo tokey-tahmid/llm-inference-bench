@@ -204,7 +204,7 @@ class WorkloadGenerator:
             for _ in range(spec.num_prefix_groups)
         ]
 
-        n_shared = int(round(spec.shared_prefix_ratio * spec.num_requests))
+        n_shared = round(spec.shared_prefix_ratio * spec.num_requests)
         assignment: list[int | None] = [None] * spec.num_requests
         if n_shared:
             chosen = rng.choice(spec.num_requests, size=n_shared, replace=False)
@@ -216,7 +216,7 @@ class WorkloadGenerator:
         requests: list[GeneratedRequest] = []
         for i in range(spec.num_requests):
             group = assignment[i]
-            target_len = int(input_lens[i])
+            target_len = input_lens[i].item()
             if group is not None:
                 prefix = prefixes[group]
                 if target_len <= len(prefix):

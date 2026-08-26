@@ -238,7 +238,7 @@ class LoadClient:
                 result.success = result.first_token_time is not None
                 if not result.success:
                     result.error = result.error or "stream produced no tokens"
-        except (httpx.HTTPError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, httpx.HTTPError) as exc:
             result.end_time = time.perf_counter() - t0
             result.error = f"{type(exc).__name__}: {exc}"
         return result
@@ -288,7 +288,9 @@ class LoadClient:
         rng = np.random.default_rng(0xC0FFEE)
         if request_rate <= 0:
             raise ValueError("request_rate must be > 0 for open loop")
-        gaps = rng.gamma(shape=burstiness, scale=1.0 / (request_rate * burstiness), size=len(requests))
+        gaps = rng.gamma(
+            shape=burstiness, scale=1.0 / (request_rate * burstiness), size=len(requests)
+        )
         arrival_offsets = np.cumsum(gaps)
 
         t0 = time.perf_counter()

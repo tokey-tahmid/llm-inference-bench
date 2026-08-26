@@ -212,8 +212,13 @@ class SweepRunner:
                                 phase.load.request_rate or 1.0,
                                 burstiness=phase.load.burstiness,
                             )
-                    except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
-                        log.error("phase_failed", group=group.label, phase=phase.label, error=str(exc))
+                    except Exception as exc:  # recorded as data, never swallowed
+                        log.error(
+                            "phase_failed",
+                            group=group.label,
+                            phase=phase.label,
+                            error=str(exc),
+                        )
                         written.append(
                             self._write(
                                 group, phase, rep, warmup,

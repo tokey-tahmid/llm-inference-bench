@@ -70,7 +70,7 @@ def test_prefix_caching_is_a_server_axis() -> None:
 
 
 def test_load_and_workload_are_phase_axes() -> None:
-    assert PHASE_AXES == {"load", "workload"}
+    assert {"load", "workload"} == set(PHASE_AXES)
 
 
 def test_group_id_ignores_port(tmp_path) -> None:

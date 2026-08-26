@@ -1,0 +1,26 @@
+{
+  "backend": "vllm",
+  "capability_evidence": {},
+  "config_flag_check": {},
+  "declared_capabilities": [
+    "block_size",
+    "ignore_eos",
+    "kv_cache_dtype_fp8",
+    "multi_node",
+    "prefix_cache_metrics",
+    "prefix_caching",
+    "prometheus_metrics",
+    "spec_decode_draft_model",
+    "spec_decode_metrics",
+    "spec_decode_ngram",
+    "tensor_parallel"
+  ],
+  "help_lines": 34,
+  "help_unusable_reason": "capture contains neither a usage line nor --help",
+  "help_usable": false,
+  "interpreter": "python3",
+  "problems": [
+    "CANNOT RECONCILE: capture contains neither a usage line nor --help. Fix the capture before trusting any capability result for this backend."
+  ],
+  "version": "0.27.1"
+}

@@ -284,7 +284,11 @@ class BackendAdapter(abc.ABC):
             "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
             # Written at import/compile time: keep on node-local tmpfs.
             "TMPDIR": "/tmp",
-            "HOME": "/tmp",
+            # NOT HOME: apptainer refuses to override it ("Overriding HOME
+            # environment variable with APPTAINERENV_HOME is not permitted") and
+            # only emits a warning, so setting it here would look effective and
+            # silently do nothing. The explicit cache variables below cover every
+            # path that would otherwise have defaulted under $HOME.
             "VLLM_CACHE_ROOT": "/tmp/vllm_cache",
             "TRITON_CACHE_DIR": "/tmp/triton_cache",
             "TORCHINDUCTOR_CACHE_DIR": "/tmp/inductor_cache",

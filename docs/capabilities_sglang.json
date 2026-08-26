@@ -1,0 +1,161 @@
+{
+  "backend": "sglang",
+  "capability_evidence": {
+    "kv_cache_dtype_fp8": {
+      "declared": false,
+      "evidenced": true,
+      "matching_flags": [
+        "--kv-cache-dtype"
+      ]
+    },
+    "multi_node": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--dist-init-addr",
+        "--nnodes"
+      ]
+    },
+    "prefix_caching": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--disable-radix-cache"
+      ]
+    },
+    "prometheus_metrics": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--enable-metrics"
+      ]
+    },
+    "spec_decode_draft_model": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--speculative-draft-model-path"
+      ]
+    },
+    "spec_decode_ngram": {
+      "declared": false,
+      "evidenced": true,
+      "matching_flags": [
+        "--speculative-algorithm"
+      ]
+    },
+    "tensor_parallel": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--tp-size"
+      ]
+    }
+  },
+  "config_flag_check": {
+    "baseline": {
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length",
+        "--disable-radix-cache"
+      ],
+      "missing": []
+    },
+    "block_size": {
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length",
+        "--disable-radix-cache"
+      ],
+      "missing": []
+    },
+    "fp8_kv": {
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length",
+        "--disable-radix-cache"
+      ],
+      "missing": []
+    },
+    "prefix_on": {
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length"
+      ],
+      "missing": []
+    },
+    "spec_ngram": {
+      "skipped": "n-gram speculative decoding not yet mapped for SGLang; confirm the flag name via slurm/probe_capabilities.sh first"
+    },
+    "tp4": {
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length",
+        "--disable-radix-cache"
+      ],
+      "missing": []
+    }
+  },
+  "declared_capabilities": [
+    "ignore_eos",
+    "multi_node",
+    "prefix_cache_metrics",
+    "prefix_caching",
+    "prometheus_metrics",
+    "spec_decode_draft_model",
+    "tensor_parallel"
+  ],
+  "help_lines": 2312,
+  "help_usable": true,
+  "interpreter": "python3",
+  "problems": [
+    "UNDERCLAIM: image supports kv_cache_dtype_fp8 (via ['--kv-cache-dtype']) but adapter does not declare it",
+    "UNDERCLAIM: image supports spec_decode_ngram (via ['--speculative-algorithm']) but adapter does not declare it"
+  ],
+  "version": "0.5.18"
+}

@@ -46,7 +46,16 @@ CAPABILITY_EVIDENCE: dict[str, dict[Capability, tuple[str, ...]]] = {
         Capability.TENSOR_PARALLEL: ("--tp-size", "--tp"),
         Capability.KV_CACHE_DTYPE_FP8: ("--kv-cache-dtype",),
         Capability.SPEC_DECODE_DRAFT_MODEL: ("--speculative-draft-model-path",),
-        Capability.SPEC_DECODE_NGRAM: ("--speculative-algorithm",),
+        # Evidenced by the n-gram-specific flags, not by the generic
+        # --speculative-algorithm. The generic flag only proves the engine does
+        # *some* speculation; it would report n-gram support for a build that
+        # only ships EAGLE.
+        Capability.SPEC_DECODE_NGRAM: (
+            "--speculative-ngram-max-trie-depth",
+            "--speculative-ngram-capacity",
+        ),
+        # SGLang's name for vLLM's --block-size.
+        Capability.BLOCK_SIZE: ("--page-size",),
         Capability.PROMETHEUS_METRICS: ("--enable-metrics",),
         Capability.MULTI_NODE: ("--dist-init-addr", "--nnodes"),
     },

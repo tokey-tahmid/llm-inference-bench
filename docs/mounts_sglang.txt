@@ -1,0 +1,7 @@
+WARNING: Overriding HOME environment variable with APPTAINERENV_HOME is not permitted
+  whoami: u104240 (104240)
+  WRITABLE   /tmp
+  WRITABLE   /dev/shm
+  WRITABLE   /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub
+  WRITABLE   /tmp/inductor_cache
+  tier2 mount: 10.3.2.5@o2ib,10.3.2.6@o2ib:10.3.2.7@o2ib,10.3.2.8@o2ib:10.3.2.9@o2ib,10.3.2.10@o2ib:10.3.2.11@o2ib,10.3.2.12@o2ib:/tier2 /home/users/u104240 lustre rw,nosuid,nodev,flock,lazystatfs,encrypt 0 0

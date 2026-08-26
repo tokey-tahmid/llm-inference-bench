@@ -168,12 +168,22 @@ def compute_metrics(load: LoadResult, *, warmup_excluded: int = 0) -> dict[str, 
 
 
 def _classify_failure(r: RequestResult) -> str:
-    """Bucket a failure by its cause, for the failure taxonomy."""
+    """Bucket a failure by its cause, for the failure taxonomy.
+
+    Semantic markers in the error text are checked **before** falling back to the
+    HTTP status, and the ordering is load-bearing. An engine that OOMs while
+    serving reports it as a 500 with the OOM in the body, so a status-first
+    classifier files it as a generic ``http_500`` and the memory boundary
+    disappears from the taxonomy. That boundary is the single most interesting
+    failure in this project (and the headline result of P2), so it must survive
+    classification.
+
+    The one status checked first is 429, which is an explicit overload signal
+    rather than an error whose cause has to be read out of a message.
+    """
     err = (r.error or "").lower()
     if r.http_status == 429:
         return "http_429_overload"
-    if r.http_status and r.http_status >= 500:
-        return f"http_{r.http_status}"
     if "out of memory" in err or "oom" in err:
         return "oom"
     if "timeout" in err or "timedout" in err:
