@@ -1,7 +1,175 @@
 {
   "backend": "vllm",
-  "capability_evidence": {},
-  "config_flag_check": {},
+  "capability_evidence": {
+    "block_size": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--block-size"
+      ]
+    },
+    "kv_cache_dtype_fp8": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--kv-cache-dtype"
+      ]
+    },
+    "multi_node": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--distributed-executor-backend"
+      ]
+    },
+    "prefix_caching": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--enable-prefix-caching",
+        "--no-enable-prefix-caching"
+      ]
+    },
+    "spec_decode_draft_model": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--speculative-config"
+      ]
+    },
+    "spec_decode_ngram": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--speculative-config"
+      ]
+    },
+    "tensor_parallel": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--tensor-parallel-size"
+      ]
+    }
+  },
+  "config_flag_check": {
+    "baseline": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--no-enable-prefix-caching"
+      ],
+      "missing": []
+    },
+    "block_size": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--block-size",
+        "--no-enable-prefix-caching"
+      ],
+      "missing": []
+    },
+    "fp8_kv": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--no-enable-prefix-caching"
+      ],
+      "missing": []
+    },
+    "prefix_on": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--enable-prefix-caching"
+      ],
+      "missing": []
+    },
+    "spec_ngram": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--no-enable-prefix-caching",
+        "--speculative-config"
+      ],
+      "missing": []
+    },
+    "tp4": {
+      "emitted": [
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tensor-parallel-size",
+        "--pipeline-parallel-size",
+        "--dtype",
+        "--gpu-memory-utilization",
+        "--max-num-seqs",
+        "--kv-cache-dtype",
+        "--seed",
+        "--load-format",
+        "--no-enable-log-requests",
+        "--max-model-len",
+        "--no-enable-prefix-caching"
+      ],
+      "missing": []
+    }
+  },
   "declared_capabilities": [
     "block_size",
     "ignore_eos",
@@ -15,12 +183,9 @@
     "spec_decode_ngram",
     "tensor_parallel"
   ],
-  "help_lines": 34,
-  "help_unusable_reason": "capture contains neither a usage line nor --help",
-  "help_usable": false,
+  "help_lines": 1858,
+  "help_usable": true,
   "interpreter": "python3",
-  "problems": [
-    "CANNOT RECONCILE: capture contains neither a usage line nor --help. Fix the capture before trusting any capability result for this backend."
-  ],
+  "problems": [],
   "version": "0.27.1"
 }

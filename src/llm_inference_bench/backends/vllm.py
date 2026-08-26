@@ -81,7 +81,13 @@ class VLLMAdapter(BackendAdapter):
             # no surprise trust_remote_code prompt on a headless node.
             "--load-format",
             "auto",
-            "--disable-log-requests",
+            # vLLM 0.27.1 replaced --disable-log-requests with an
+            # --enable-log-requests/--no-enable-log-requests pair and flipped the
+            # default to off (caught by capability probe 5147176; the old flag
+            # would have failed every launch in the sweep). Passed explicitly
+            # rather than relying on the default: per-request logging costs real
+            # time in the serving loop, so it must be off by intent, not by luck.
+            "--no-enable-log-requests",
         ]
         if cfg.max_model_len is not None:
             argv += ["--max-model-len", str(cfg.max_model_len)]

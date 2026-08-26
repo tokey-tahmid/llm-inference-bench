@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +47,12 @@ class RunnerConfig:
     gpu_ids: list[int] | None = None
     startup_timeout: float = 900.0
     sweep_name: str = "unnamed"
+    # Free-form tags recorded in every artifact's provenance. Used to
+    # distinguish otherwise-identical runs that differ in how they were
+    # executed rather than in what was configured, e.g. packed vs isolated
+    # placement on a node. Without this the two are indistinguishable in
+    # results/raw and the interference delta cannot be computed at all.
+    notes: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_tokenizer(model_path: str) -> Any:
@@ -111,6 +117,7 @@ class SweepRunner:
             warmup=warmup,
             status=status,
             error=error,
+            notes=self.cfg.notes,
         )
         return write_artifact(self.cfg.results_raw, prov, measurements)
 

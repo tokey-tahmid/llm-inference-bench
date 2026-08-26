@@ -24,7 +24,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --time=00:25:00
+#SBATCH --time=00:12:00
 #SBATCH --output=/mnt/tier2/project/p201362/ttahmid/inference-work/logs/capprobe_%j.out
 
 set -euo pipefail
@@ -175,8 +175,12 @@ probe_backend() {
     printf '%s\n' "$py" > "${DOCS}/python_${name}.txt"
 }
 
+# `--help=all`, not `--help`. vLLM 0.27.1 paginates: a bare --help prints a
+# summary of config groups (ModelConfig, CacheConfig, ...) and tells you to ask
+# for --help=all to get the actual flags. Capturing the summary would show zero
+# flags present, which is why the reconciler's usability guard exists.
 probe_backend vllm "$LIB_SIF_VLLM" vllm \
-    vllm serve --help
+    vllm serve --help=all
 
 probe_backend sglang "$LIB_SIF_SGLANG" sglang \
     python3 -m sglang.launch_server --help

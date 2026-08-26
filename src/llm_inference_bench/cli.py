@@ -49,6 +49,16 @@ def _load_lockfile(repo: Path) -> dict:
     return json.loads(path.read_text())
 
 
+def _parse_notes(pairs: list[str]) -> dict[str, str]:
+    notes: dict[str, str] = {}
+    for item in pairs:
+        key, sep, value = item.partition("=")
+        if not sep:
+            raise SystemExit(f"--note expects KEY=VALUE, got {item!r}")
+        notes[key.strip()] = value.strip()
+    return notes
+
+
 def cmd_expand(args: argparse.Namespace) -> int:
     definition = SweepDefinition.from_yaml(args.config)
     groups = assign_ports(definition.expand())
@@ -112,6 +122,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         warmup_repetitions=definition.warmup_repetitions,
         gpu_ids=[int(x) for x in args.gpu_ids.split(",")] if args.gpu_ids else None,
         sweep_name=definition.name,
+        notes=_parse_notes(args.note),
     )
     cfg.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,6 +154,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_run.add_argument("--gpu-ids", type=str, default=None,
                        help="comma-separated CUDA_VISIBLE_DEVICES for packed single-GPU runs")
+    p_run.add_argument(
+        "--note",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="tag recorded in every artifact's provenance, e.g. --note placement=packed",
+    )
     p_run.add_argument("--results-raw", type=Path, default=None)
     p_run.add_argument("--log-dir", type=Path, default=None)
     p_run.set_defaults(func=cmd_run)

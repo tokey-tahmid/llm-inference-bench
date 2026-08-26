@@ -154,6 +154,14 @@ def load(
             "theoretical_prefix_hit_rate_bound": meas.get(
                 "theoretical_prefix_hit_rate_bound"
             ),
+            # Operator tags: how the run was executed, as opposed to how it was
+            # configured. `placement` distinguishes packed from isolated runs of
+            # an otherwise identical group, which is the only thing that makes
+            # the packing-interference delta computable.
+            "placement": (prov.get("notes") or {}).get("placement"),
+            "packing_role": (prov.get("notes") or {}).get("packing_role"),
+            "packing_gpu": (prov.get("notes") or {}).get("packing_gpu"),
+            "packing_job": (prov.get("notes") or {}).get("packing_job"),
             # Engine-reported telemetry, already normalised by the adapters
             "prefix_cache_hit_rate": telemetry.get("prefix_cache_hit_rate"),
             "spec_acceptance_rate": telemetry.get("spec_acceptance_rate"),

@@ -1,8 +1,15 @@
 {
   "backend": "sglang",
   "capability_evidence": {
+    "block_size": {
+      "declared": true,
+      "evidenced": true,
+      "matching_flags": [
+        "--page-size"
+      ]
+    },
     "kv_cache_dtype_fp8": {
-      "declared": false,
+      "declared": true,
       "evidenced": true,
       "matching_flags": [
         "--kv-cache-dtype"
@@ -38,10 +45,11 @@
       ]
     },
     "spec_decode_ngram": {
-      "declared": false,
+      "declared": true,
       "evidenced": true,
       "matching_flags": [
-        "--speculative-algorithm"
+        "--speculative-ngram-max-trie-depth",
+        "--speculative-ngram-capacity"
       ]
     },
     "tensor_parallel": {
@@ -83,6 +91,7 @@
         "--random-seed",
         "--enable-metrics",
         "--context-length",
+        "--page-size",
         "--disable-radix-cache"
       ],
       "missing": []
@@ -100,6 +109,7 @@
         "--random-seed",
         "--enable-metrics",
         "--context-length",
+        "--kv-cache-dtype",
         "--disable-radix-cache"
       ],
       "missing": []
@@ -121,7 +131,23 @@
       "missing": []
     },
     "spec_ngram": {
-      "skipped": "n-gram speculative decoding not yet mapped for SGLang; confirm the flag name via slurm/probe_capabilities.sh first"
+      "emitted": [
+        "--model-path",
+        "--served-model-name",
+        "--host",
+        "--port",
+        "--tp-size",
+        "--dtype",
+        "--mem-fraction-static",
+        "--max-running-requests",
+        "--random-seed",
+        "--enable-metrics",
+        "--context-length",
+        "--disable-radix-cache",
+        "--speculative-algorithm",
+        "--speculative-num-draft-tokens"
+      ],
+      "missing": []
     },
     "tp4": {
       "emitted": [
@@ -142,20 +168,20 @@
     }
   },
   "declared_capabilities": [
+    "block_size",
     "ignore_eos",
+    "kv_cache_dtype_fp8",
     "multi_node",
     "prefix_cache_metrics",
     "prefix_caching",
     "prometheus_metrics",
     "spec_decode_draft_model",
+    "spec_decode_ngram",
     "tensor_parallel"
   ],
-  "help_lines": 2312,
+  "help_lines": 2311,
   "help_usable": true,
   "interpreter": "python3",
-  "problems": [
-    "UNDERCLAIM: image supports kv_cache_dtype_fp8 (via ['--kv-cache-dtype']) but adapter does not declare it",
-    "UNDERCLAIM: image supports spec_decode_ngram (via ['--speculative-algorithm']) but adapter does not declare it"
-  ],
+  "problems": [],
   "version": "0.5.18"
 }
