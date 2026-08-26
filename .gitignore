@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Engine stdout goes to project storage, not the repo. Large and not a result.
+logs/
+*.log
+
+# Figures are generated from results/raw by one command; the raw artifacts are
+# the committed source of truth. Regenerated outputs are committed deliberately
+# for the README, not swept in by accident.
+results/figures/*.png.tmp

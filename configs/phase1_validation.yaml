@@ -1,0 +1,57 @@
+# Phase 1: pipeline validation, NOT a result.
+#
+# Working agreement #2 in ../CLAUDE.md: get one real measurement end to end
+# before widening anything. This sweep exists to prove submit -> collect -> parse
+# -> plot works against real hardware, on the smallest matrix that exercises
+# every stage. Two concurrency points is the minimum that produces a line rather
+# than a dot, so a plotting bug is visible.
+#
+# Deliberately narrow: one backend, one model, TP=1, prefix caching off. Every
+# other axis is added only after this passes.
+#
+# Model paths point at the pinned HF snapshot directory rather than a repo id.
+# The revision sha is in the path itself, so an offline run cannot silently
+# resolve to a different revision.
+
+name: phase1-validation
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  # 4096 comfortably covers 1024 in + 128 out while keeping KV allocation and
+  # CUDA graph capture short. The real sweep raises this; validation does not
+  # need to pay for it.
+  max_model_len: 4096
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  num_requests: 128
+  input_len: 1024
+  output_len: 128
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm]
+  tensor_parallel_size: [1]
+
+  # Both points are closed loop. c=1 gives unloaded latency, which is the
+  # cleanest check that TTFT and ITL are being measured at all; c=32 puts real
+  # work through the scheduler. Open-loop points come in phase 2, once the
+  # closed-loop numbers confirm the client itself is sound.
+  load:
+    - {mode: closed_loop, concurrency: 1}
+    - {mode: closed_loop, concurrency: 32}
