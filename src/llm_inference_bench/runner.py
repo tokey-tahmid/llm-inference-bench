@@ -64,11 +64,17 @@ def _load_tokenizer(model_path: str) -> Any:
 class SweepRunner:
     """Executes server groups and writes one raw artifact per measurement."""
 
-    def __init__(self, cfg: RunnerConfig, image_paths: dict[str, Path],
-                 image_digests: dict[str, str | None]) -> None:
+    def __init__(
+        self,
+        cfg: RunnerConfig,
+        image_paths: dict[str, Path],
+        image_digests: dict[str, str | None],
+        backend_versions: dict[str, str | None] | None = None,
+    ) -> None:
         self.cfg = cfg
         self.image_paths = image_paths
         self.image_digests = image_digests
+        self.backend_versions = backend_versions or {}
 
     # -- artifact helpers ----------------------------------------------------
 
@@ -129,6 +135,7 @@ class SweepRunner:
             group.backend,
             sif_path=self.image_paths[group.backend],
             image_digest=self.image_digests.get(group.backend),
+            backend_version=self.backend_versions.get(group.backend),
         )
 
         # Capability gate, before any GPU time is spent on this group.
@@ -140,6 +147,7 @@ class SweepRunner:
                     group, phase, rep, warmup,
                     status="unsupported",
                     measurements={"unsupported_reasons": reasons},
+                    backend_version=adapter.backend_version,
                     error="; ".join(reasons),
                 )
                 for phase in group.phases
@@ -166,6 +174,7 @@ class SweepRunner:
                     group, phase, rep, warmup,
                     status=status,
                     measurements={"engine_log_path": str(log_path)},
+                    backend_version=adapter.backend_version,
                     error=str(exc)[:8000],
                 )
                 for phase in group.phases

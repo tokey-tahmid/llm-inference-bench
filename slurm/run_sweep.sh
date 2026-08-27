@@ -11,7 +11,7 @@
 # group with tensor_parallel_size > 1.
 #
 #SBATCH --job-name=lib-sweep
-#SBATCH --account=p201362
+#SBATCH --account=p201466
 #SBATCH --partition=gpu
 #SBATCH --qos=default
 #SBATCH --nodes=1

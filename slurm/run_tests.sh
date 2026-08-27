@@ -11,8 +11,8 @@
 #   sbatch slurm/run_tests.sh
 #
 #SBATCH --job-name=lib-tests
-#SBATCH --account=p201362
-#SBATCH --partition=cpu
+#SBATCH --account=p201466
+#SBATCH --partition=gpu
 #SBATCH --qos=test
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

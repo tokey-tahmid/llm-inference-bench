@@ -109,6 +109,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     images = lock.get("images", {})
     image_paths = {name: Path(info["sif"]) for name, info in images.items() if "sif" in info}
     image_digests = {name: info.get("digest") for name, info in images.items()}
+    # Populated by slurm/probe_capabilities.sh. Absent rather than "UNKNOWN" when
+    # it could not be read, so a placeholder never reaches an artifact.
+    backend_versions = {name: info.get("version") for name, info in images.items()}
 
     missing = {g.backend for g in groups} - set(image_paths)
     if missing:
@@ -126,7 +129,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     cfg.log_dir.mkdir(parents=True, exist_ok=True)
 
-    runner = SweepRunner(cfg, image_paths, image_digests)
+    missing_versions = sorted(g.backend for g in groups if not backend_versions.get(g.backend))
+    if missing_versions:
+        raise SystemExit(
+            f"no backend version recorded for {missing_versions} in the lockfile. "
+            "Run: sbatch slurm/probe_capabilities.sh\n"
+            "Every artifact must carry backend_version; refusing to measure without it."
+        )
+
+    runner = SweepRunner(cfg, image_paths, image_digests, backend_versions)
     written: list[Path] = []
     for group in groups:
         written.extend(runner.run_group(group))

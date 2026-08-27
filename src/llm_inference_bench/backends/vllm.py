@@ -134,9 +134,20 @@ class VLLMAdapter(BackendAdapter):
         return ["python3", "-c", "import vllm; print(vllm.__version__)"]
 
     def reset_cache_endpoint(self) -> str | None:
-        # Present on the vLLM OpenAI server; its availability is confirmed at
-        # run time by the recorded status code rather than assumed here.
+        # Requires VLLM_SERVER_DEV_MODE; see extra_container_env below.
         return "/reset_prefix_cache"
+
+    def extra_container_env(self) -> dict[str, str]:
+        # /reset_prefix_cache is NOT mounted on a default vLLM 0.27.1 server. It
+        # lives in vllm/entrypoints/serve/dev/cache/api_router.py and is
+        # registered only under `if envs.VLLM_SERVER_DEV_MODE:` in api_server.py,
+        # so without this the endpoint 404s and every phase after the first
+        # inherits a warm prefix cache from the one before it.
+        #
+        # Found the honest way: the phase-1 run recorded cache_reset_ok=false
+        # with status 404 rather than assuming the reset had worked, and the
+        # integrity check surfaced it (probe 5150753 located the gate).
+        return {"VLLM_SERVER_DEV_MODE": "1"}
 
     async def engine_telemetry(
         self, client: httpx.AsyncClient, base_url: str

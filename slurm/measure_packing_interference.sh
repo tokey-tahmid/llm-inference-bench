@@ -26,7 +26,7 @@
 # the packed phase and look artificially fast.
 #
 #SBATCH --job-name=lib-packing
-#SBATCH --account=p201362
+#SBATCH --account=p201466
 #SBATCH --partition=gpu
 #SBATCH --qos=default
 #SBATCH --nodes=1

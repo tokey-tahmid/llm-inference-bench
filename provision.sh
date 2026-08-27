@@ -12,8 +12,8 @@
 # is skipped on re-run unless FORCE=1.
 #
 #SBATCH --job-name=lib-provision
-#SBATCH --account=p201362
-#SBATCH --partition=cpu
+#SBATCH --account=p201466
+#SBATCH --partition=gpu
 #SBATCH --qos=default
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

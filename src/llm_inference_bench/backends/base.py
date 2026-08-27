@@ -148,9 +148,19 @@ class BackendAdapter(abc.ABC):
     name: str
     capabilities: frozenset[Capability]
 
-    def __init__(self, sif_path: Path, image_digest: str | None = None) -> None:
+    def __init__(
+        self,
+        sif_path: Path,
+        image_digest: str | None = None,
+        backend_version: str | None = None,
+    ) -> None:
         self.sif_path = Path(sif_path)
         self.image_digest = image_digest
+        # Read from the provisioning lockfile, which is the only place the
+        # version is known: it cannot be recovered from a running server, and a
+        # measurement whose artifact says backend_version=None is not fully
+        # traceable even though the image digest pins it exactly.
+        self.backend_version = backend_version
 
     # -- capability gating ---------------------------------------------------
 
@@ -211,6 +221,15 @@ class BackendAdapter(abc.ABC):
     def reset_cache_endpoint(self) -> str | None:
         """Endpoint that clears prefix/KV cache state, or None if unavailable."""
         return None
+
+    def extra_container_env(self) -> dict[str, str]:
+        """Engine-specific environment variables for the container.
+
+        Kept per adapter rather than in the shared launcher: an engine's private
+        env vars are exactly the sort of thing that must not leak into the
+        backend-neutral path.
+        """
+        return {}
 
     async def reset_caches(self, client: httpx.AsyncClient, base_url: str) -> dict[str, Any]:
         """Clear cache state between measurement phases sharing one server.
@@ -300,6 +319,7 @@ class BackendAdapter(abc.ABC):
             "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
         }
+        passthrough.update(self.extra_container_env())
         if gpu_ids is not None:
             passthrough["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpu_ids)
         for key, val in passthrough.items():
@@ -348,7 +368,7 @@ class BackendAdapter(abc.ABC):
                     base_url=base_url,
                     process=proc,
                     backend_name=self.name,
-                    backend_version=None,
+                    backend_version=self.backend_version,
                     image_digest=self.image_digest,
                     launch_command=cmdline,
                     startup_seconds=time.monotonic() - started,

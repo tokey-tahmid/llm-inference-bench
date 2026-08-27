@@ -18,7 +18,7 @@
 # Cost is a couple of minutes under qos=test.
 #
 #SBATCH --job-name=lib-capprobe
-#SBATCH --account=p201362
+#SBATCH --account=p201466
 #SBATCH --partition=gpu
 #SBATCH --qos=test
 #SBATCH --nodes=1

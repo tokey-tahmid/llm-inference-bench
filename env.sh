@@ -5,13 +5,25 @@
 # Scripts that need modules must run their body under `bash -lc`, or source
 # /etc/profile.d/modules.sh before calling `module load`.
 
-export LIB_ACCOUNT="p201362"
+# Compute is billed to p201466; storage lives under p201362. The split is
+# deliberate and the two are unrelated:
+#   - p201466 has the GPU headroom (113 of 126 node-hours free vs 44 on
+#     p201362), and it is the account these runs are meant to consume.
+#   - p201466 has NO CPU allocation at all (gres/cpun=0), so every job runs on
+#     the gpu partition, whose nodes have 128 cores anyway. Provisioning and
+#     unit tests do not need a GPU but do need an account that can pay for the
+#     node, so they run there too.
+#   - Filesystem access is governed by unix group membership, not by the Slurm
+#     account, so jobs billed to p201466 write to the p201362 project directory
+#     without any special handling.
+export LIB_ACCOUNT="p201466"
 
 # Repo root (this file's directory).
 LIB_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LIB_REPO
 
-# Bulk data lives on project storage, never in the git repo.
+# Bulk data lives on project storage (p201362), never in the git repo.
+# Unrelated to LIB_ACCOUNT above; see the note there.
 export LIB_DATA="/mnt/tier2/project/p201362/ttahmid/inference-work"
 export LIB_IMAGES="${LIB_DATA}/images"
 export LIB_MODELS="${LIB_DATA}/models"

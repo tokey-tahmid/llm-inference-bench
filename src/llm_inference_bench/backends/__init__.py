@@ -30,14 +30,21 @@ def available_backends() -> list[str]:
     return sorted(_REGISTRY)
 
 
-def get_adapter(name: str, sif_path: Path, image_digest: str | None = None) -> BackendAdapter:
+def get_adapter(
+    name: str,
+    sif_path: Path,
+    image_digest: str | None = None,
+    backend_version: str | None = None,
+) -> BackendAdapter:
     try:
         cls = _REGISTRY[name]
     except KeyError:
         raise KeyError(
             f"unknown backend {name!r}; available: {', '.join(available_backends())}"
         ) from None
-    return cls(sif_path=sif_path, image_digest=image_digest)
+    return cls(
+        sif_path=sif_path, image_digest=image_digest, backend_version=backend_version
+    )
 
 
 __all__ = [

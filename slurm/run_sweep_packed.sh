@@ -19,7 +19,7 @@
 # node and the NVLink mesh between them.
 #
 #SBATCH --job-name=lib-packed
-#SBATCH --account=p201362
+#SBATCH --account=p201466
 #SBATCH --partition=gpu
 #SBATCH --qos=default
 #SBATCH --nodes=1
