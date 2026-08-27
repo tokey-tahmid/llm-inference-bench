@@ -18,7 +18,10 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --time=04:00:00
-#SBATCH --output=/mnt/tier2/project/p201362/ttahmid/inference-work/logs/sweep_%A_%a.out
+# %j, not %A_%a: for a non-array job %A resolves to 0 and %a to 4294967294, so
+# every plain sweep would overwrite the same log file. %j is unique for both a
+# plain job and an individual array task.
+#SBATCH --output=/mnt/tier2/project/p201362/ttahmid/inference-work/logs/sweep_%j.out
 
 set -euo pipefail
 

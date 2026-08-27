@@ -12,6 +12,7 @@ producing an untraceable number.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import platform
@@ -59,11 +60,24 @@ def _run(cmd: list[str], timeout: float = 30.0) -> str | None:
     return out.stdout.strip() or None
 
 
+@functools.lru_cache(maxsize=8)
 def git_sha(repo_root: Path) -> str | None:
     """Return HEAD sha, suffixed ``-dirty`` when the tree has uncommitted changes.
 
     The suffix matters: a figure regenerated from a dirty tree is not reproducible
     from a checkout, and the raw artifact should say so rather than imply it is.
+
+    **Cached deliberately, so the answer is the state at process start.** Python
+    imports the harness once, at launch, and the code that actually ran is
+    whatever was on disk at that moment. Re-checking per artifact instead means a
+    long sweep gets stamped `-dirty` because someone edited an unrelated file
+    while it was running, which is both misleading (the running code was clean)
+    and unfixable after the fact. Sampling once, at the point the modules were
+    loaded, is the honest answer to "what produced this".
+
+    It does not license editing the repo mid-sweep: an edit to a module that has
+    not been imported yet would still change behaviour. It only stops an
+    irrelevant edit from corrupting the record.
     """
     sha = _run(["git", "-C", str(repo_root), "rev-parse", "HEAD"])
     if sha is None:

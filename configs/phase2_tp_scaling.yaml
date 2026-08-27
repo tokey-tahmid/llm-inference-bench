@@ -1,0 +1,91 @@
+# Phase 2: tensor-parallel scaling on one node, plus a throughput/latency frontier.
+#
+#   python -m llm_inference_bench.cli expand configs/phase2_tp_scaling.yaml
+#   sbatch --array=0-2 slurm/run_sweep.sh configs/phase2_tp_scaling.yaml
+#
+# One server group per TP degree, so the array maps task id -> group index.
+# Do NOT run this through run_sweep_packed.sh: the TP=2 and TP=4 groups need
+# every GPU on the node and the NVLink mesh between them.
+#
+# What this measures, and why the load points are shaped the way they are:
+#
+# STRONG SCALING (fixed total load, increasing TP). The `closed_c*` points are
+# identical across all three groups, so speedup and parallel efficiency against
+# TP=1 are read directly off matched configurations. This is the standard HPC
+# scaling question applied to a serving engine.
+#
+# WEAK SCALING (load grows with TP, per-GPU work held constant). The
+# `concurrency_per_gpu` points resolve to c=16/32/64 at TP=1/2/4. Efficiency here
+# answers a different question: does adding GPUs let you serve proportionally
+# more concurrent users at the same latency?
+#
+# THE FRONTIER. The concurrency ladder 1 -> 128 spans unloaded latency to
+# saturation, which is what a throughput/latency Pareto frontier needs. c=1 is
+# the cleanest possible read of per-token cost with no batching effects; c=128
+# should push the scheduler into queueing.
+#
+# num_requests scales with concurrency deliberately. A fixed count would make c=1
+# take minutes of wall clock while giving c=128 only a single wave through the
+# scheduler, which measures ramp-up rather than steady state.
+#
+# Prefix caching is OFF throughout so the TP axis is isolated. It gets its own
+# sweep; mixing the two would confound a cache effect with a parallelism effect.
+#
+# EXPECTED COST: ~6 GPU node-hours. Well under the 15 node-hour flag threshold.
+
+name: phase2-tp-scaling
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  # 8192 leaves room for the 1024-in/256-out workload with headroom, without
+  # paying for KV allocation and CUDA graph capture that will never be used.
+  max_model_len: 8192
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm]
+
+  # Intra-node only. The fabric is a uniform NV4 mesh at every one of these
+  # degrees, so any efficiency falloff here is compute, memory bandwidth or
+  # scheduler overhead, NOT interconnect topology. TP=8 crosses to a second node
+  # over InfiniBand and is a separate sweep, because it is the only point where
+  # an interconnect effect is observable at all.
+  tensor_parallel_size: [1, 2, 4]
+
+  load:
+    # --- strong scaling + Pareto frontier: identical load at every TP ---
+    - {mode: closed_loop, concurrency: 1,   num_requests: 32}
+    - {mode: closed_loop, concurrency: 8,   num_requests: 128}
+    - {mode: closed_loop, concurrency: 32,  num_requests: 384}
+    - {mode: closed_loop, concurrency: 128, num_requests: 1024}
+
+    # --- weak scaling: per-GPU load held constant ---
+    # Resolves to c=16 at TP=1, c=32 at TP=2, c=64 at TP=4.
+    - {mode: closed_loop, concurrency_per_gpu: 16, num_requests: 512}
+
+    # --- open loop: the latency knee past saturation ---
+    # Closed loop cannot show queueing collapse, because backpressure throttles
+    # the offered load. Poisson arrivals at a fixed rate can. The rate is chosen
+    # to sit near the TP=1 saturation point so the knee is visible at TP=1 and
+    # should recede as TP grows.
+    - {mode: open_loop, request_rate: 8, num_requests: 512}

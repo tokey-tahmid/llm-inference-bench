@@ -134,3 +134,100 @@ def test_open_loop_requires_request_rate(tmp_path) -> None:
     bad = MINIMAL.replace("    - {mode: closed_loop, concurrency: 1}", "    - {mode: open_loop}")
     with pytest.raises(ValueError, match="open_loop load requires request_rate"):
         SweepDefinition.from_yaml(_write(tmp_path, bad)).expand()
+
+
+# --- weak vs strong scaling -------------------------------------------------
+# The distinction is the scaling study, so a slip here would silently turn a
+# weak-scaling run into a strong-scaling one and the efficiency curve would be
+# wrong in a way no downstream check could catch.
+
+WEAK = """
+name: weak
+repetitions: 1
+warmup_repetitions: 0
+models:
+  m:
+    path: /models/m
+    revision: abc123
+model: m
+workload:
+  num_requests: 32
+  input_len: 128
+  output_len: 16
+axes:
+  backend: [vllm]
+  tensor_parallel_size: [1, 2, 4]
+  load:
+    - {mode: closed_loop, concurrency: 8}
+    - {mode: closed_loop, concurrency_per_gpu: 8}
+"""
+
+
+def test_weak_scaling_load_grows_with_tp(tmp_path) -> None:
+    groups = SweepDefinition.from_yaml(_write(tmp_path, WEAK)).expand()
+    by_tp = {g.engine.tensor_parallel_size: g for g in groups}
+
+    for tp in (1, 2, 4):
+        loads = {p.load.label(): p.load for p in by_tp[tp].phases}
+        # Strong scaling: identical at every TP degree.
+        assert loads["closed_c8"].concurrency == 8
+        # Weak scaling: per-GPU load held constant, so total scales with TP.
+        weak = loads["weak_closed_c8pergpu"]
+        assert weak.concurrency == 8 * tp
+
+
+def test_weak_and_strong_labels_are_distinguishable(tmp_path) -> None:
+    """At TP=1 both resolve to c=8; only the label separates them in artifacts."""
+    groups = SweepDefinition.from_yaml(_write(tmp_path, WEAK)).expand()
+    tp1 = next(g for g in groups if g.engine.tensor_parallel_size == 1)
+    labels = [p.load.label() for p in tp1.phases]
+    concurrencies = [p.load.concurrency for p in tp1.phases]
+    assert concurrencies == [8, 8]
+    assert len(set(labels)) == 2
+
+
+def test_load_point_can_override_request_count(tmp_path) -> None:
+    """Steady state needs the request count to scale with concurrency."""
+    text = MINIMAL.replace(
+        "    - {mode: closed_loop, concurrency: 1}\n"
+        "    - {mode: closed_loop, concurrency: 8}",
+        "    - {mode: closed_loop, concurrency: 1, num_requests: 16}\n"
+        "    - {mode: closed_loop, concurrency: 8, num_requests: 256}",
+    )
+    groups = SweepDefinition.from_yaml(_write(tmp_path, text)).expand()
+    counts = {p.load.concurrency: p.workload.num_requests for p in groups[0].phases}
+    assert counts == {1: 16, 8: 256}
+
+
+def test_request_count_override_changes_the_workload_fingerprint(tmp_path) -> None:
+    """Two phases with different request counts are different workloads."""
+    text = MINIMAL.replace(
+        "    - {mode: closed_loop, concurrency: 1}\n"
+        "    - {mode: closed_loop, concurrency: 8}",
+        "    - {mode: closed_loop, concurrency: 1, num_requests: 16}\n"
+        "    - {mode: closed_loop, concurrency: 8, num_requests: 256}",
+    )
+    groups = SweepDefinition.from_yaml(_write(tmp_path, text)).expand()
+    prints = {p.workload.fingerprint() for p in groups[0].phases}
+    assert len(prints) == 2
+
+
+def test_concurrency_and_per_gpu_are_mutually_exclusive(tmp_path) -> None:
+    bad = MINIMAL.replace(
+        "    - {mode: closed_loop, concurrency: 1}",
+        "    - {mode: closed_loop, concurrency: 1, concurrency_per_gpu: 4}",
+    )
+    with pytest.raises(ValueError, match="not both"):
+        SweepDefinition.from_yaml(_write(tmp_path, bad)).expand()
+
+
+def test_open_loop_weak_scaling_resolves_rate(tmp_path) -> None:
+    text = WEAK.replace(
+        "    - {mode: closed_loop, concurrency_per_gpu: 8}",
+        "    - {mode: open_loop, request_rate_per_gpu: 2.5}",
+    )
+    groups = SweepDefinition.from_yaml(_write(tmp_path, text)).expand()
+    by_tp = {g.engine.tensor_parallel_size: g for g in groups}
+    for tp in (1, 2, 4):
+        rates = [p.load.request_rate for p in by_tp[tp].phases if p.load.request_rate]
+        assert 2.5 * tp in rates

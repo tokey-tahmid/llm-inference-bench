@@ -21,3 +21,21 @@ recorded about itself:
    invalid as a template.
 
 Both are fixed; the replacement run is in `results/raw/`.
+
+## 2026-08-27, phase-1 re-run, 8 artifacts (sweep job 5150758)
+
+Both defects from the previous batch were confirmed fixed in these artifacts
+(`cache_reset_ok: true` with HTTP 200, `backend_version: 0.27.1`), and
+`output_length_exact` / `prompt_length_exact` were true throughout.
+
+Superseded for one reason, and it was a process error rather than a code defect:
+the repo was edited *while the sweep was running*, so `git_sha` again ends in
+`-dirty` even though the code that actually ran was the clean tree at `a715573`.
+
+That exposed a genuine provenance flaw, now fixed: `git_sha` was re-checked at
+every artifact write rather than sampled once. A long sweep could therefore be
+stamped dirty by an edit to a completely unrelated file. It is now cached at
+process start, which is the honest answer to "what produced this", since Python
+imported the harness once at launch.
+
+The discipline that follows: do not touch the repo while a sweep is in flight.

@@ -107,13 +107,81 @@ looks like data.
 
 ## Open questions
 
-- Backend versions for both images are still **unread**. Until the fixed probe
-  runs, the lockfile has image digests (which are exact and sufficient for
-  reproducibility) but no human-readable version string.
-- Whether both engines accept integer-token prompts on `/v1/completions` is
-  asserted by design but not yet verified on hardware. `validate_prompt_token_fidelity`
-  runs before any measurement and records the answer; if either engine fails it,
-  the input-length and prefix-sharing axes need rethinking for that backend.
-- Whether `ignore_eos` is honoured by both engines at the top level of a
-  completions request. `compute_metrics` flags any mismatch via
-  `output_length_exact`, so this cannot pass silently.
+RESOLVED 2026-08-26/27, see the entry below:
+- ~~Backend versions unread~~ -> vLLM **0.27.1**, SGLang **0.5.18**, both in the lockfile.
+- ~~Integer-token prompts unverified~~ -> confirmed exact on vLLM (64 sent, 64 reported).
+- ~~`ignore_eos` unverified~~ -> confirmed honoured on vLLM (`output_length_exact: true`).
+
+Still open:
+- Both confirmations are **vLLM only**. SGLang has passed the capability gate but
+  has not yet served a request, so `token_id_prompts_supported` and
+  `output_length_exact` are unverified there. Both are checked automatically on
+  its first run and will fail loudly rather than silently if they do not hold.
+- SGLang's `--mem-fraction-static` is not the same quantity as vLLM's
+  `--gpu-memory-utilization` (static share vs total pool). Matched numeric values
+  do not mean matched memory budgets, so a backend-vs-backend comparison needs
+  either a calibration step or an explicit caveat. Not yet decided which.
+- Packing interference is unmeasured, so packed runs cannot carry headline
+  numbers yet. `slurm/measure_packing_interference.sh` exists to settle it.
+
+---
+
+## 2026-08-26/27 — the first real run, and what it caught
+
+Phase-1 validation sweep, job `5148060`, vLLM 0.27.1, Qwen2.5-7B-Instruct at
+TP=1 on one A100-40GB. 8 artifacts, 128/128 requests successful, 2 warmup
+repetitions correctly recorded and excluded.
+
+### Two design assumptions confirmed, not assumed
+
+Both of these were load-bearing and both are now measured rather than believed:
+
+* **Integer-token prompts round-trip exactly.** `validate_prompt_token_fidelity`
+  sent 64 token IDs and vLLM reported `prompt_tokens: 64`. This is what makes
+  the shared-prefix ratio a real knob: had the engine re-tokenised, the "shared"
+  region would drift and the prefix-cache measurement would have quietly become
+  a measurement of nothing.
+* **`ignore_eos` is honoured.** `output_length_exact: true` across every phase,
+  so the output-length axis is controlled and cross-configuration comparisons
+  are legitimate.
+
+### Two defects found, both by recording rather than assuming
+
+**`/reset_prefix_cache` returned 404 on every phase boundary.** vLLM 0.27.1 has
+moved it to `vllm/entrypoints/serve/dev/cache/api_router.py`, registered only
+inside `if envs.VLLM_SERVER_DEV_MODE:` in `api_server.py` (located by probe
+`5150753`). Fixed by setting `VLLM_SERVER_DEV_MODE=1` through a new per-adapter
+`extra_container_env()` hook, which keeps an engine's private environment out of
+the backend-neutral launcher.
+
+The severity is worth being precise about: in *this* sweep it was harmless,
+because prefix caching was off for every phase, so there was no cache state to
+inherit. It would have become serious the moment the prefix-caching axis was
+enabled, and it would have been very hard to see from the numbers alone: later
+phases would simply have looked faster. The reason it was caught at all is that
+`reset_caches` records the HTTP status rather than assuming success, and the
+integrity check treats a failed reset as a problem rather than a detail.
+
+**`backend_version` was `None` in every artifact.** The version is only known
+from the provisioning lockfile and was never plumbed into the adapter. The image
+digest already pinned reproducibility exactly, so nothing was unreproducible,
+but an artifact that cannot state its backend version is not fully traceable.
+The runner now refuses to measure at all when the lockfile has no version for a
+backend, rather than emitting artifacts with a hole in them.
+
+### The general lesson
+
+Every one of the four failures on the road to a first measurement was found by
+a check that recorded an outcome instead of assuming one: the reconciler's
+usability guard, the traceback detector, the cache-reset status, the git-dirty
+flag. None of them were found by reading code. The cost of each check is a few
+lines; the cost of not having them is a plausible-looking number.
+
+### Cluster and accounting note (2026-08-27)
+
+Compute moved to account `p201466`, which had 113 of 126 GPU node-hours free
+against 44 remaining on `p201362`. Storage stays under `p201362`; the two are
+unrelated, since filesystem access follows unix group membership rather than the
+Slurm account. `p201466` has **no CPU allocation at all** (`gres/cpun=0`), so
+every job now runs on the `gpu` partition, including provisioning and unit
+tests, which do not need a GPU but do need an account that can pay for the node.

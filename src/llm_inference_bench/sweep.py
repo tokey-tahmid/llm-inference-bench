@@ -66,20 +66,79 @@ PHASE_AXES = frozenset({"load", "workload"})
 
 @dataclass(frozen=True)
 class LoadSpec:
-    """How to offer load for one measurement phase."""
+    """How to offer load for one measurement phase.
+
+    ``concurrency`` and ``concurrency_per_gpu`` are the strong- and weak-scaling
+    forms of the same axis, and the distinction is the whole scaling study:
+
+    * **Strong scaling** fixes the total offered load and increases TP degree.
+      Use ``concurrency``. Speedup and parallel efficiency are measured against
+      TP=1 at the same load.
+    * **Weak scaling** grows the load in proportion to TP degree, so per-GPU work
+      is held constant. Use ``concurrency_per_gpu``; the effective concurrency is
+      resolved per server group as ``concurrency_per_gpu * tensor_parallel_size``.
+
+    Resolving this at expansion time, rather than making the operator write three
+    near-identical sweep files, keeps the two scaling modes visibly parallel in
+    the YAML and stops a transcription slip from silently turning a weak-scaling
+    run into a strong-scaling one.
+    """
 
     mode: LoadMode = LoadMode.CLOSED_LOOP
     concurrency: int | None = None
+    concurrency_per_gpu: int | None = None
     request_rate: float | None = None
+    request_rate_per_gpu: float | None = None
     burstiness: float = 1.0
 
     def __post_init__(self) -> None:
-        if self.mode is LoadMode.CLOSED_LOOP and not self.concurrency:
-            raise ValueError("closed_loop load requires concurrency")
-        if self.mode is LoadMode.OPEN_LOOP and not self.request_rate:
-            raise ValueError("open_loop load requires request_rate")
+        if self.mode is LoadMode.CLOSED_LOOP and not (
+            self.concurrency or self.concurrency_per_gpu
+        ):
+            raise ValueError(
+                "closed_loop load requires concurrency (strong scaling) "
+                "or concurrency_per_gpu (weak scaling)"
+            )
+        if self.mode is LoadMode.OPEN_LOOP and not (
+            self.request_rate or self.request_rate_per_gpu
+        ):
+            raise ValueError(
+                "open_loop load requires request_rate (strong scaling) "
+                "or request_rate_per_gpu (weak scaling)"
+            )
+        if self.concurrency and self.concurrency_per_gpu:
+            raise ValueError("give concurrency or concurrency_per_gpu, not both")
+        if self.request_rate and self.request_rate_per_gpu:
+            raise ValueError("give request_rate or request_rate_per_gpu, not both")
+
+    def resolve(self, tensor_parallel_size: int) -> LoadSpec:
+        """Bind the per-GPU (weak scaling) form to a concrete TP degree."""
+        if self.concurrency_per_gpu:
+            return replace(
+                self,
+                concurrency=self.concurrency_per_gpu * tensor_parallel_size,
+                concurrency_per_gpu=None,
+            )
+        if self.request_rate_per_gpu:
+            return replace(
+                self,
+                request_rate=self.request_rate_per_gpu * tensor_parallel_size,
+                request_rate_per_gpu=None,
+            )
+        return self
+
+    @property
+    def is_weak_scaling(self) -> bool:
+        return bool(self.concurrency_per_gpu or self.request_rate_per_gpu)
 
     def label(self) -> str:
+        # The label must distinguish weak from strong scaling, or two phases that
+        # happen to resolve to the same concurrency at one TP degree become
+        # indistinguishable in the artifacts.
+        if self.concurrency_per_gpu:
+            return f"weak_closed_c{self.concurrency_per_gpu}pergpu"
+        if self.request_rate_per_gpu:
+            return f"weak_open_r{self.request_rate_per_gpu:g}pergpu"
         if self.mode is LoadMode.CLOSED_LOOP:
             return f"closed_c{self.concurrency}"
         return f"open_r{self.request_rate:g}"
@@ -179,7 +238,9 @@ def _parse_load(raw: dict[str, Any]) -> LoadSpec:
     return LoadSpec(
         mode=LoadMode(raw.get("mode", "closed_loop")),
         concurrency=raw.get("concurrency"),
+        concurrency_per_gpu=raw.get("concurrency_per_gpu"),
         request_rate=raw.get("request_rate"),
+        request_rate_per_gpu=raw.get("request_rate_per_gpu"),
         burstiness=float(raw.get("burstiness", 1.0)),
     )
 
@@ -254,7 +315,6 @@ class SweepDefinition:
         server_keys = sorted(self.server_axes)
         server_values = [self.server_axes[k] for k in server_keys]
 
-        phases = self._expand_phases()
         groups: list[ServerGroup] = []
 
         for combo_vals in itertools.product(*server_values) if server_keys else [()]:
@@ -334,35 +394,53 @@ class SweepDefinition:
                 ServerGroup(
                     backend=backend,
                     engine=engine,
-                    phases=phases,
+                    phases=self._expand_phases(engine.tensor_parallel_size),
                     model_repo=model_key,
                     model_revision=model_info.get("revision"),
                     label="_".join(label_bits),
                 )
             )
 
+        phases_per_group = len(groups[0].phases) if groups else 0
         log.info(
             "sweep_expanded",
             name=self.name,
             server_groups=len(groups),
-            phases_per_group=len(phases),
+            phases_per_group=phases_per_group,
             repetitions=self.repetitions,
             warmup=self.warmup_repetitions,
             # Warmup runs are recorded artifacts, so they count toward the plan
             # and toward the allocation. Excluding them understated both.
-            total_measurements=(
-                len(groups) * len(phases) * (self.repetitions + self.warmup_repetitions)
+            total_measurements=sum(
+                len(g.phases) * (self.repetitions + self.warmup_repetitions) for g in groups
             ),
         )
         return groups
 
-    def _expand_phases(self) -> list[Phase]:
-        loads = [_parse_load(x) for x in self.phase_axes.get("load", [{}])]
+    def _expand_phases(self, tensor_parallel_size: int = 1) -> list[Phase]:
+        """Build the phase list for one server group.
+
+        Takes the TP degree because weak-scaling load specs resolve against it.
+
+        A load point may carry its own ``num_requests``, overriding the workload
+        default for that phase only. This matters for steady state: a fixed
+        request count across a concurrency sweep is wrong at both ends. At c=1 a
+        large count is mostly wasted wall-clock, while at c=64 the same count is
+        only two waves through the scheduler, which measures ramp-up rather than
+        steady-state behaviour. Scaling the count with concurrency keeps every
+        point measuring the same thing.
+        """
+        raw_loads = self.phase_axes.get("load", [{}])
         workload_variants = self.phase_axes.get("workload", [{}])
         phases: list[Phase] = []
         for wl_raw in workload_variants:
-            workload = _parse_workload(wl_raw, self.workload_defaults)
-            for load in loads:
+            for load_raw in raw_loads:
+                load = _parse_load(load_raw).resolve(tensor_parallel_size)
+                wl_for_phase = dict(wl_raw) if isinstance(wl_raw, dict) else {}
+                if isinstance(load_raw, dict) and "num_requests" in load_raw:
+                    wl_for_phase["num_requests"] = load_raw["num_requests"]
+                workload = _parse_workload(wl_for_phase, self.workload_defaults)
+
                 bits = [load.label()]
                 if workload.shared_prefix_ratio:
                     bits.append(f"pfx{workload.shared_prefix_ratio:g}")
