@@ -114,6 +114,15 @@ def main() -> int:
     print(report.summary())
     print()
 
+    # Scope to the phase-1 validation sweep only. Once later sweeps land in
+    # results/raw this script would otherwise aggregate across every experiment,
+    # which is both meaningless and crash-prone: open-loop phases carry no
+    # concurrency, so grouping on it yields NaN.
+    frame = frame[frame["sweep_name"] == "phase1-validation"]
+    if frame.empty:
+        print("no phase1-validation artifacts present; nothing to plot.")
+        return 1
+
     problems = check_integrity(frame, report)
     if problems:
         print("INTEGRITY PROBLEMS:")
