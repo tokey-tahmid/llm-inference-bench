@@ -1,0 +1,102 @@
+{
+  "measurements": {
+    "engine_log_path": "/mnt/tier2/project/p201362/ttahmid/inference-work/logs/engine_sglang_Qwen2.5-32B-Instruct_tp4_cfb78c0897fb.log"
+  },
+  "provenance": {
+    "backend_image_digest": "sha256:9e148f5ac788e856a06166bd6347a831831eb9fcfab4d1770874823a7c29a1a1",
+    "backend_name": "sglang",
+    "backend_version": "0.5.18",
+    "cuda_version": "13.2",
+    "driver_version": "595.71.05",
+    "error": "sglang exited with code -9 during startup. Log tail:\n    run_batch (scheduler.py:3694)\n    wrapper (utils/nvtx_utils.py:109)\n    event_loop_overlap (scheduler.py:1801)\n    decorate_context (torch/utils/_contextlib.py:124)\n    dispatch_event_loop (scheduler.py:4913)\n    run_event_loop (scheduler.py:1703)\n    run_scheduler_process (scheduler.py:5064)\n    run (multiprocessing/process.py:108)\n    _bootstrap (multiprocessing/process.py:314)\n    _main (multiprocessing/spawn.py:135)\n    spawn_main (multiprocessing/spawn.py:122)\n    <module> (<string>:1)\nThread 4610 (idle): \"tqdm_monitor\"\n    0x7f570acfae51 (libc.so.6)\n    0x7f570ad0639e (libc.so.6)\n    PyThread_acquire_lock_timed (python3.12)\n    wait (threading.py:359)\n    wait (threading.py:655)\n    run (tqdm/_monitor.py:69)\n    _bootstrap_inner (threading.py:1073)\n    _bootstrap (threading.py:1030)\n    0x7f570acfeb84 (libc.so.6)\n    __gconv_open (libc.so.6)\nThread 4882 (idle): \"Thread-1 (_watchdog_thread)\"\n    clock_nanosleep (libc.so.6)\n    _watchdog_once (utils/watchdog.py:147)\n    _watchdog_thread (utils/watchdog.py:127)\n    run (threading.py:1010)\n    _bootstrap_inner (threading.py:1073)\n    _bootstrap (threading.py:1030)\n    0x7f570acfeb84 (libc.so.6)\n    __gconv_open (libc.so.6)\n\n[2026-08-31 11:34:27] CUDA user-triggered coredump is not enabled. Set CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 before CUDA initialization.\n[2026-08-31 11:34:27] CUDA coredump pipe not found for PID 3977: /mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/corepipe.cuda.mel2139.3977. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.\n[2026-08-31 11:34:27] CUDA coredump pipe not found for PID 4018: /mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/corepipe.cuda.mel2139.4018. Ensure CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1 was set before this process initialized CUDA.\n[2026-08-31 11:34:27] Waiting 60.0 seconds for CUDA coredumps before exiting.\n[2026-08-31 11:35:27] kill_process_tree called: parent_pid=3462, include_parent=True, pid=3462\nINFO:    Terminating squashfuse_ll after timeout\nINFO:    Timeouts can be caused by a running background process",
+    "exact_command_line": "/mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/src/llm_inference_bench/cli.py run /mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/configs/full_32b.yaml --group-index 5",
+    "full_config_dict": {
+      "engine": {
+        "block_size": null,
+        "dtype": "bfloat16",
+        "enable_prefix_caching": false,
+        "extra_args": [],
+        "gpu_memory_utilization": 0.92,
+        "host": "127.0.0.1",
+        "kv_cache_dtype": "auto",
+        "max_model_len": 4096,
+        "max_num_seqs": 128,
+        "model_id": "Qwen/Qwen2.5-32B-Instruct",
+        "model_path": "/mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-32B-Instruct/snapshots/5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd",
+        "model_revision": "5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd",
+        "pipeline_parallel_size": 1,
+        "port": 8105,
+        "seed": 0,
+        "spec_decode": {
+          "draft_model": null,
+          "mode": "off",
+          "ngram_prompt_lookup_max": 4,
+          "ngram_prompt_lookup_min": 1,
+          "num_speculative_tokens": 0
+        },
+        "tensor_parallel_size": 4
+      },
+      "group_id": "cfb78c0897fb",
+      "group_label": "sglang_Qwen2.5-32B-Instruct_tp4",
+      "load": {
+        "burstiness": 1.0,
+        "concurrency": 1,
+        "mode": "closed_loop",
+        "request_rate": null
+      },
+      "phase_id": "e03b0c6655d4",
+      "phase_label": "closed_c1_pfx0.6_pfx60",
+      "sweep_name": "full-32b",
+      "workload": {
+        "fingerprint": "aa9210e5bbd3f685",
+        "input_len": {
+          "distribution": "fixed",
+          "high": null,
+          "low": null,
+          "mean": 1024,
+          "sigma": 0.0
+        },
+        "num_prefix_groups": 4,
+        "num_requests": 24,
+        "output_len": {
+          "distribution": "fixed",
+          "high": null,
+          "low": null,
+          "mean": 128,
+          "sigma": 0.0
+        },
+        "prompt_format": "token_ids",
+        "seed": 1234,
+        "shared_prefix_ratio": 0.6,
+        "shared_prefix_tokens": 512
+      }
+    },
+    "git_sha": "fc7c2a2c9ad602f22ae45cddf9797cac98b0a636-dirty",
+    "gpu_count": 4,
+    "gpu_memory_gb": 40.0,
+    "gpu_model": "NVIDIA A100-SXM4-40GB",
+    "gpu_topology": "\u001b[4mGPU0\tGPU1\tGPU2\tGPU3\tNIC0\tNIC1\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tNV4\tNV4\tNV4\tSYS\tSYS\t24-31,88-95\t3\t\tN/A\nGPU1\tNV4\t X \tNV4\tNV4\tPIX\tSYS\t8-15,72-79\t1\t\tN/A\nGPU2\tNV4\tNV4\t X \tNV4\tSYS\tPIX\t56-63,120-127\t7\t\tN/A\nGPU3\tNV4\tNV4\tNV4\t X \tSYS\tSYS\t40-47,104-111\t5\t\tN/A\nNIC0\tSYS\tPIX\tSYS\tSYS\t X \tSYS\t\t\t\t\nNIC1\tSYS\tSYS\tPIX\tSYS\tSYS\t X \t\t\t\t\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n\nNIC Legend:\n\n  NIC0: mlx5_0\n  NIC1: mlx5_1",
+    "harness_version": "0.1.0",
+    "hostname": "mel2139",
+    "model_id": "Qwen/Qwen2.5-32B-Instruct",
+    "model_revision": "5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd",
+    "notes": {},
+    "python_version": "3.12.14",
+    "repetition_index": 2,
+    "run_id": "4ee8c79bacb145bd",
+    "slurm": {
+      "slurm_account": "p201466",
+      "slurm_array_job_id": "5162710",
+      "slurm_array_task_id": "5",
+      "slurm_cpus_per_task": "64",
+      "slurm_job_id": "5162729",
+      "slurm_nnodes": "1",
+      "slurm_nodelist": "mel2139",
+      "slurm_partition": "gpu"
+    },
+    "slurm_job_id": "5162729",
+    "status": "launch_failed",
+    "utc_timestamp": "2026-08-31T09:36:00+00:00",
+    "warmup": false
+  }
+}
