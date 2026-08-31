@@ -163,7 +163,16 @@ def main() -> int:
     axes[0].legend(loc="upper left")
 
     first = ok.iloc[0]
-    n_reps = int(min(len(isolated), len(packed)))
+    # Repetitions PER CONFIGURATION, not total rows. Counting rows conflates
+    # repetitions with phases and overstates N in the caption, which is a
+    # provenance error however small it looks: a reader sizing confidence off
+    # "N=6" would be reading 3 repetitions across 2 phases.
+    n_reps = int(
+        min(
+            isolated.groupby(["group_label", "phase_label"]).size().min(),
+            packed.groupby(["group_label", "phase_label"]).size().min(),
+        )
+    )
     provenance_caption(
         fig,
         hardware=hardware_string(first),

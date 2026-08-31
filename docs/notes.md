@@ -185,3 +185,55 @@ unrelated, since filesystem access follows unix group membership rather than the
 Slurm account. `p201466` has **no CPU allocation at all** (`gres/cpun=0`), so
 every job now runs on the `gpu` partition, including provisioning and unit
 tests, which do not need a GPU but do need an account that can pay for the node.
+
+---
+
+## 2026-08-31 — packing four single-GPU runs onto one node is expensive
+
+Job `5162712`, vLLM 0.27.1, Qwen2.5-7B at TP=1, N=3 repetitions per phase.
+Identical server group run twice on the same node in the same job: once alone on
+GPU 0 with the other three GPUs idle, once as four NUMA-pinned replicas with only
+GPU 0's replica measured.
+
+| metric | c=1 | c=8 |
+|---|---|---|
+| TTFT p50 | **+150.7 %** | +52.8 % |
+| TTFT p95 | +132.6 % | +48.1 % |
+| ITL p50 | -0.8 % | +15.8 % |
+| output throughput | -5.0 % | **-34.1 %** |
+
+**The 4x budget multiplier is not free, and the answer is decisive: packed runs
+cannot carry headline numbers.** They remain fine for trend claims where a
+consistent bias across compared configurations cancels, but any absolute latency
+or throughput figure from a packed run would be wrong by the margins above.
+
+This is precisely why it was measured rather than assumed away. Had the main
+sweep been packed for the 4x saving, every number in it would have carried a
+34 % throughput error and a 2.5x TTFT error, and nothing in the data would have
+revealed it: the runs succeed, the artifacts look clean, the numbers are simply
+wrong.
+
+### The shape of the interference says what is contended
+
+The interesting detail is that the two latency components behave completely
+differently at low load:
+
+* At c=1, **ITL is untouched (-0.8 %) while TTFT more than doubles.**
+* At c=8, ITL degrades (+15.8 %) and throughput collapses (-34.1 %).
+
+Decode is GPU-local: each step reads weights already resident in HBM, so a
+neighbouring replica on a different GPU barely perturbs it. Prefill is not: it
+moves the prompt through the host, competes for memory bandwidth and PCIe, and
+four concurrent prefills contend directly. So at low load the damage is confined
+to the prefill path, which is exactly what TTFT measures. Under real concurrency
+the contention reaches the decode loop too and throughput follows.
+
+That decomposition is worth more than the headline percentage: it says the
+binding shared resource is host-side bandwidth on the prefill path, not the
+NVLink mesh or the GPUs themselves.
+
+### Consequence for the rest of P1
+
+Every sweep in this project ran unpacked, one server group per billed node. That
+costs 75 % of each billed hour on TP=1 groups and is the right trade: the whole
+point of the exercise is numbers that can be quoted.
