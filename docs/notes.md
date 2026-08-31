@@ -377,3 +377,64 @@ the fact, the first being the raw Prometheus exposition.
 independently derived total. Throughput and ITL are computed from different
 quantities, and their disagreement is what exposed this. A single metric with no
 redundant path to the same physical fact cannot audit itself.
+
+---
+
+## 2026-08-31 — where speculative decoding stops helping, and why
+
+With inter-token latency measured per token rather than per chunk, the
+speculative-decoding sweep answers the question the definition of done asks
+directly. vLLM 0.27.1, Qwen2.5-7B, n-gram speculation with 4 draft tokens,
+shared-prefix ratio 0.6 so the lookup has repeated text to match against.
+
+| TP | concurrency | per-token ITL off | per-token ITL spec | ITL change | throughput change | acceptance |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 12.21 ms | 3.05 ms | **-75.0 %** | **+203.0 %** | 0.956 |
+| 1 | 4 | 12.35 ms | 3.93 ms | -68.2 % | +100.1 % | 0.939 |
+| 1 | 16 | 15.38 ms | 6.66 ms | -56.7 % | +43.9 % | 0.898 |
+| 1 | 64 | 31.57 ms | 18.44 ms | -41.6 % | +12.5 % | 0.899 |
+| 1 | 128 | 55.14 ms | 36.38 ms | -34.0 % | **-1.9 %** | 0.899 |
+| 2 | 1 | 7.53 ms | 2.17 ms | -71.2 % | +174.0 % | 0.950 |
+| 2 | 4 | 8.13 ms | 6.64 ms | -18.2 % | -21.3 % | 0.924 |
+| 2 | 16 | 10.42 ms | 7.30 ms | -29.9 % | -12.7 % | 0.898 |
+| 2 | 64 | 18.93 ms | 14.26 ms | -24.7 % | -13.7 % | 0.901 |
+| 2 | 128 | 34.94 ms | 23.78 ms | -31.9 % | -10.0 % | 0.903 |
+
+### The answer: throughput, not latency, is what speculation loses
+
+Per-token latency improves at **every** point measured, from -75 % at c=1 to
+-34 % at c=128. Speculation never stops helping latency.
+
+Throughput is the opposite story. At TP=1 the gain decays monotonically
+(+203 % -> +100 % -> +44 % -> +12.5 %) and **crosses zero between c=64 and
+c=128**, where it becomes -1.9 %. At TP=2 it is already negative by c=4.
+
+### And the mechanism is saturation, not prediction quality
+
+This is the part the acceptance-rate column settles. The obvious hypothesis for
+a vanishing speculation win is that the drafts stop being accepted, so the engine
+pays for verification and throws the results away. **That is not what happens
+here.** Acceptance is essentially flat across the whole concurrency ladder:
+0.956 at c=1 and 0.899 at c=128, a decline of about six points while the
+throughput benefit falls by 205 points.
+
+So the drafts remain just as good. What changes is the value of the spare
+capacity they were exploiting. At low concurrency decode is
+memory-bandwidth-bound: the GPU reads the entire weight matrix to produce one
+token per sequence and has idle arithmetic units, so verifying four draft tokens
+in the same pass is nearly free and converts many thin steps into few fat ones.
+At high concurrency batching has already filled those units with real work from
+other requests, so the speculative verification is no longer free: it competes
+directly, and every rejected draft token is compute taken from a request that
+would have used it.
+
+That also explains why TP=2 turns negative so much earlier. Splitting the model
+across two GPUs halves the per-GPU weight-reading cost, so the machine reaches
+compute-boundedness at a lower concurrency, and the window where speculation is
+free closes sooner.
+
+**Practical reading:** n-gram speculation is a latency optimisation for lightly
+loaded serving, not a throughput optimisation for a busy fleet. On a saturated
+replica it costs throughput while still improving per-request latency, which is a
+real trade rather than a free win, and which of the two matters depends entirely
+on whether the deployment is latency-bound or capacity-bound.
