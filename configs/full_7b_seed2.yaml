@@ -1,0 +1,73 @@
+# Seed-sensitivity replicate of the full 7B matrix.
+#
+#   sbatch --array=0-11 slurm/run_sweep.sh configs/full_7b_seed2.yaml
+#
+# Identical to configs/full_7b.yaml except for the workload seed, which changes
+# the actual token sequences while holding every length, ratio and engine setting
+# fixed.
+#
+# This asks a question repetitions cannot: repetitions re-measure the SAME
+# prompts and so bound timing noise, but they say nothing about whether a result
+# depends on the particular random prompts that were drawn. If the two seeds
+# agree, the numbers are a property of the configuration; if they diverge, they
+# are partly a property of one arbitrary workload sample, and every conclusion
+# in the writeup needs that caveat.
+#
+# Cheap to ask (the matrix already exists) and it either strengthens every other
+# result or invalidates a claim of generality. Worth the remaining allocation.
+#
+# 12 server groups, one per array task, so twelve nodes measure concurrently.
+# N=5 rather than the N=3 minimum: the phase-1 data showed TTFT spread of ~11%
+# at c=32 against 0.1% at c=1, so the loaded points have visible variance and
+# CLAUDE.md calls for more repetitions exactly there.
+
+name: full-7b-seed2
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 8192
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  seed: 20260831
+  prompt_format: token_ids
+  # A long shared system prompt is the realistic case for prefix caching, and
+  # the ratio is varied per phase below.
+  shared_prefix_tokens: 512
+  num_prefix_groups: 4
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [1, 2, 4]
+  enable_prefix_caching: [false, true]
+
+  load:
+    - {mode: closed_loop, concurrency: 1,   num_requests: 32}
+    - {mode: closed_loop, concurrency: 8,   num_requests: 128}
+    - {mode: closed_loop, concurrency: 32,  num_requests: 384}
+    - {mode: closed_loop, concurrency: 128, num_requests: 1024}
+    - {mode: closed_loop, concurrency_per_gpu: 16, num_requests: 512}
+    - {mode: open_loop, request_rate: 8, num_requests: 512}
+
+  # Shared-prefix ratio is a phase axis: it changes the workload, not the engine,
+  # so all four ratios measure against one server launch. Crossed with the
+  # prefix-caching server axis this gives the full on/off x ratio comparison.
+  workload:
+    - {label: pfx0,  shared_prefix_ratio: 0.0}
+    - {label: pfx30, shared_prefix_ratio: 0.3}
+    - {label: pfx60, shared_prefix_ratio: 0.6}
+    - {label: pfx90, shared_prefix_ratio: 0.9}
