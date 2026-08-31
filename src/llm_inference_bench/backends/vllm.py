@@ -171,10 +171,24 @@ class VLLMAdapter(BackendAdapter):
             vals = [v for k, v in raw.items() if k.startswith(prefix)]
             return sum(vals) if vals else None
 
-        # V1 reports prefix caching as query/hit counters; V0 reported a gauge.
-        # Support both rather than assuming which engine version the image pinned.
-        queries = total("vllm:gpu_prefix_cache_queries_total")
+        # Metric names moved in vLLM 0.27.1: the `gpu_` infix was dropped, so
+        # `vllm:gpu_prefix_cache_hits_total` became `vllm:prefix_cache_hits_total`
+        # and `vllm:gpu_cache_usage_perc` became `vllm:kv_cache_usage_perc`.
+        # Looking only for the old names silently yielded no hit rate at all.
+        #
+        # This was recoverable only because the full Prometheus exposition is
+        # stored verbatim in every artifact, so already-collected runs can be
+        # reprocessed rather than re-measured. That is the argument for keeping
+        # raw telemetry alongside the normalised keys.
+        #
+        # Both spellings are accepted: the old one first for older images, the
+        # new one as fallback, so neither pin breaks.
+        queries = total("vllm:gpu_prefix_cache_queries_total") or total(
+            "vllm:prefix_cache_queries_total"
+        )
         hits = total("vllm:gpu_prefix_cache_hits_total")
+        if hits is None:
+            hits = total("vllm:prefix_cache_hits_total")
         if queries and queries > 0 and hits is not None:
             out["prefix_cache_hit_rate"] = hits / queries
             out["prefix_cache_queries"] = queries
@@ -191,7 +205,9 @@ class VLLMAdapter(BackendAdapter):
             out["spec_draft_tokens"] = drafted
             out["spec_accepted_tokens"] = accepted
 
-        cache_usage = total("vllm:gpu_cache_usage_perc")
+        cache_usage = total("vllm:gpu_cache_usage_perc") or total(
+            "vllm:kv_cache_usage_perc"
+        )
         if cache_usage is not None:
             out["kv_cache_usage_frac"] = cache_usage
         preemptions = total("vllm:num_preemptions_total")
