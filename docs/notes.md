@@ -237,3 +237,75 @@ NVLink mesh or the GPUs themselves.
 Every sweep in this project ran unpacked, one server group per billed node. That
 costs 75 % of each billed hour on TP=1 groups and is the right trade: the whole
 point of the exercise is numbers that can be quoted.
+
+---
+
+## 2026-08-31 — the prefix cache was working; the metric name was not
+
+The prefix-caching figure first came out with a measured hit rate of exactly
+**0.000** at every shared-prefix ratio, against a theoretical bound rising to
+0.29. That is the precise failure the token-ID prompt design exists to prevent,
+so it looked like the benchmark had the disease it was built to avoid.
+
+It had not. Two separate faults, both in the *reading* of the metric rather than
+in the caching itself.
+
+### 1. vLLM 0.27.1 renamed the counters
+
+The `gpu_` infix was dropped:
+
+| old (adapter looked for this) | vLLM 0.27.1 actually exposes |
+|---|---|
+| `vllm:gpu_prefix_cache_hits_total` | `vllm:prefix_cache_hits_total` |
+| `vllm:gpu_prefix_cache_queries_total` | `vllm:prefix_cache_queries_total` |
+| `vllm:gpu_cache_usage_perc` | `vllm:kv_cache_usage_perc` |
+
+The adapter found nothing under the old names and, correctly, reported the hit
+rate as **absent rather than zero**. That design choice is what made the fault
+diagnosable: had it defaulted to 0.0, the figure would have shown a plausible
+"prefix caching does not work here" result with no way to tell it from a
+measurement bug. The 0.000 line that did appear came from SGLang, which reports a
+genuine zero.
+
+**Nothing had to be re-measured.** The full Prometheus exposition is stored
+verbatim in every artifact, so the correct counters were already on disk and the
+existing runs could simply be reprocessed. That is the argument for storing raw
+telemetry next to the normalised keys, and it paid for itself here at a cost of
+about 40 KB per artifact.
+
+### 2. The counters are cumulative and the cache reset does not clear them
+
+`/reset_prefix_cache` empties the cache but leaves the Prometheus counters
+running for the lifetime of the server process. Since one server serves many
+phases (that is the whole point of the server/phase split), the raw ratio at the
+end of a phase includes every phase before it. A 0.9-ratio phase following a
+0.0-ratio phase reads low, and the on/off comparison becomes sensitive to phase
+ordering, which is not a property anyone wants their results to have.
+
+Fixed by differencing consecutive scrapes within a server group, ordered by time.
+The first phase of a group has no predecessor and gets NaN rather than a guess; a
+negative delta means the server restarted and is discarded rather than reported.
+
+Recovered per-phase result, tracking just under the achievable bound:
+
+| shared-prefix ratio | measured hit rate | theoretical bound |
+|---|---|---|
+| 0.0 | 0.000 | 0.00 |
+| 0.3 | 0.094 | ~0.15 |
+| 0.6 | 0.234 | ~0.29 |
+
+The residual gap is eviction and block-granularity rounding. Having the bound on
+the same axes is what makes that gap interpretable rather than just a number.
+
+### 3. A spread band that was not noise
+
+The same figure's outer panels carried enormous bands, which read as though the
+measurement were wildly unrepeatable. They were not measurement spread at all:
+grouping only by shared-prefix ratio pooled 7B with 32B, TP=1 with TP=4 and c=1
+with c=128, so the band spanned the heterogeneity of the whole matrix. Phase 1
+measured 0.1 % repetition spread at c=1, so that reading was badly wrong.
+
+The figure now pins every axis except the one under study and names the slice in
+the caption. General lesson, and the same one as the reconciler's usability
+guard: **an aggregate is only as meaningful as the thing it is aggregating over,
+and a plot will happily average across a distinction that matters.**
