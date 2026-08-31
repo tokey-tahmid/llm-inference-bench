@@ -65,6 +65,7 @@ SCRIPTS=(
     analysis/plot_scaling.py
     analysis/plot_pareto_and_cache.py
     analysis/plot_packing_interference.py
+    analysis/make_results_tables.py
 )
 
 WORST=0
