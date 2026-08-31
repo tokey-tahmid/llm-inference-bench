@@ -26,7 +26,7 @@ from .backends import BackendLaunchError, get_adapter
 from .backends.base import BackendAdapter, ServerHandle
 from .client import LoadClient, LoadMode
 from .metrics import compute_metrics
-from .provenance import RunStatus, build_provenance, write_artifact
+from .provenance import RunStatus, build_provenance, git_sha, write_artifact
 from .sweep import Phase, ServerGroup
 from .workload.generator import (
     WorkloadGenerator,
@@ -71,6 +71,22 @@ class SweepRunner:
         image_digests: dict[str, str | None],
         backend_versions: dict[str, str | None] | None = None,
     ) -> None:
+        # Sample the git state EAGERLY, here, before any measurement runs.
+        #
+        # git_sha is cached for the process, but the cache populates on first
+        # call, which was the first artifact write, minutes into the sweep. If
+        # anyone touched the working tree in that window, every artifact from a
+        # multi-hour run got stamped `-dirty` even though the code under test was
+        # the clean tree loaded at launch. That happened here: analysis fixes
+        # committed while sweeps were in flight marked 1027 otherwise-valid
+        # artifacts as unreproducible.
+        #
+        # Sampling at construction time makes the recorded sha mean what it
+        # claims: the state of the tree when this run started. It does not
+        # license editing mid-sweep, it just stops an unrelated edit from
+        # corrupting the record.
+        sha = git_sha(cfg.repo_root)
+        log.info("provenance_git_sha_sampled", git_sha=sha)
         self.cfg = cfg
         self.image_paths = image_paths
         self.image_digests = image_digests
