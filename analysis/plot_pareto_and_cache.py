@@ -130,6 +130,39 @@ def figure_prefix_caching(ok: pd.DataFrame) -> bool:
         print("prefix caching: need both on and off arms")
         return False
 
+    # Pin every axis except the one under study.
+    #
+    # Without this the spread band is not measurement noise at all: grouping only
+    # by shared-prefix ratio pools 7B with 32B, TP=1 with TP=4, and c=1 with
+    # c=128, so the band spans the heterogeneity of the whole matrix and reads as
+    # though the measurement were wildly unrepeatable. It is not. The bands in
+    # phase 1 were 0.1% at c=1.
+    #
+    # Chosen scope: the most-measured (backend, model, TP, concurrency)
+    # combination that has BOTH caching arms across the most ratios, so the
+    # comparison is like for like and the figure states which slice it is.
+    best, best_key = None, None
+    for key, grp in sub.groupby(
+        ["backend", "model_id", "tensor_parallel_size", "concurrency"], dropna=False
+    ):
+        if grp["enable_prefix_caching"].nunique() < 2:
+            continue
+        score = (grp["shared_prefix_ratio"].nunique(), len(grp))
+        if best is None or score > best:
+            best, best_key = score, key
+    if best_key is None:
+        print("prefix caching: no configuration has both arms at matched settings")
+        return False
+    backend, model, tp, conc = best_key
+    sub = sub[
+        (sub["backend"] == backend)
+        & (sub["model_id"] == model)
+        & (sub["tensor_parallel_size"] == tp)
+        & (sub["concurrency"] == conc)
+    ]
+    scope = f"{backend} · {str(model).split('/')[-1]} · TP={tp:g} · c={conc:g}"
+    print(f"prefix caching: scoped to {scope} ({len(sub)} rows)")
+
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.9))
 
     # TTFT vs shared-prefix ratio, caching on vs off.
@@ -183,7 +216,8 @@ def figure_prefix_caching(ok: pd.DataFrame) -> bool:
     ax.set_title("Throughput effect", loc="left")
     ax.legend(loc="upper left")
 
-    _caption(fig, sub, "shared prefix = 512 tokens across 4 prefix groups")
+    _caption(fig, sub, f"{scope} · shared prefix = 512 tokens across 4 prefix groups · "
+                       "all other axes pinned, so the band is repetition spread")
     fig.suptitle("Automatic prefix caching", x=0.0, ha="left", fontsize=11)
     out = FIGURES / "prefix_caching.png"
     fig.savefig(out)
