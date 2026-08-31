@@ -164,6 +164,10 @@ def load(
             "packing_job": (prov.get("notes") or {}).get("packing_job"),
             # Engine-reported telemetry, already normalised by the adapters
             "prefix_cache_hit_rate": telemetry.get("prefix_cache_hit_rate"),
+            # Raw counters retained so the rate can be recomputed as a per-phase
+            # delta; see add_prefix_cache_deltas.
+            "raw_hits": _counter(telemetry.get("raw_prometheus") or {}, _HIT_KEYS),
+            "raw_queries": _counter(telemetry.get("raw_prometheus") or {}, _QUERY_KEYS),
             "spec_acceptance_rate": telemetry.get("spec_acceptance_rate"),
             "kv_cache_usage_frac": telemetry.get("kv_cache_usage_frac"),
             "preemptions_total": telemetry.get("preemptions_total"),
@@ -176,7 +180,7 @@ def load(
 
         rows.append(row)
 
-    frame = pd.DataFrame(rows)
+    frame = add_prefix_cache_deltas(pd.DataFrame(rows))
     report = LoadReport(
         files_found=found,
         parsed=len(rows),
@@ -197,6 +201,64 @@ def _safe_iter(
                 yield path, json.load(fh)
         except (OSError, json.JSONDecodeError) as exc:
             unparseable.append((path.name, str(exc)))
+
+
+# Prometheus counter families whose value we recover from stored raw telemetry.
+# Both vLLM spellings are listed: 0.27.1 dropped the `gpu_` infix.
+_HIT_KEYS = ("vllm:gpu_prefix_cache_hits_total", "vllm:prefix_cache_hits_total")
+_QUERY_KEYS = ("vllm:gpu_prefix_cache_queries_total", "vllm:prefix_cache_queries_total")
+
+
+def _counter(raw: dict[str, Any], names: tuple[str, ...]) -> float | None:
+    """Sum a Prometheus counter family, trying each accepted spelling."""
+    for name in names:
+        vals = [v for k, v in raw.items() if k.startswith(name)]
+        if vals:
+            return float(sum(vals))
+    return None
+
+
+def add_prefix_cache_deltas(frame: pd.DataFrame) -> pd.DataFrame:
+    """Recompute prefix cache hit rate per phase, from stored raw telemetry.
+
+    Two problems are solved here, and neither needed a re-measurement because the
+    full Prometheus exposition is stored in every artifact.
+
+    **Metric renaming.** vLLM 0.27.1 dropped the `gpu_` infix, so artifacts
+    collected while the adapter looked only for the old spelling carry no
+    normalised hit rate. The raw exposition still has the numbers.
+
+    **Cumulative counters.** ``/reset_prefix_cache`` clears the cache but does
+    NOT reset the Prometheus counters, which run for the lifetime of the server.
+    Since one server serves many phases, the raw ratio at the end of a phase is
+    contaminated by every phase before it: a 0.9-shared-prefix phase following a
+    0.0 phase reads low, and the on/off comparison is skewed by ordering.
+
+    Taking the difference between consecutive scrapes within a server group,
+    ordered by time, recovers the per-phase rate. The first artifact of each
+    group has no predecessor and gets NaN rather than a guess.
+    """
+    if frame.empty or "raw_hits" not in frame.columns:
+        return frame
+    frame = frame.sort_values(["group_label", "utc_timestamp", "repetition"]).copy()
+    frame["prefix_cache_hit_rate_delta"] = float("nan")
+    frame["prefix_cache_queries_delta"] = float("nan")
+
+    for _, idx in frame.groupby("group_label", dropna=False).groups.items():
+        sub = frame.loc[idx]
+        dh = sub["raw_hits"].diff()
+        dq = sub["raw_queries"].diff()
+        # A negative delta means the server restarted and the counters reset;
+        # treat it as unusable rather than reporting a nonsensical rate.
+        valid = (dq > 0) & (dh >= 0)
+        frame.loc[idx, "prefix_cache_queries_delta"] = dq.where(valid)
+        frame.loc[idx, "prefix_cache_hit_rate_delta"] = (dh / dq).where(valid)
+
+    # Prefer the delta; fall back to whatever the adapter normalised live.
+    frame["prefix_cache_hit_rate"] = frame["prefix_cache_hit_rate_delta"].combine_first(
+        frame["prefix_cache_hit_rate"]
+    )
+    return frame
 
 
 def _length_mean(spec: Any) -> Any:
