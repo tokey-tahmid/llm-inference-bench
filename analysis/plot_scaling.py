@@ -59,6 +59,22 @@ RESULTS_RAW = REPO / "results" / "raw"
 FIGURES = REPO / "results" / "figures"
 
 
+def _fit_efficiency_ylim(ax: plt.Axes) -> None:
+    """Keep 1.0 visible without ever clipping a plotted point.
+
+    A fixed ylim of (0, 1.25) reads well but silently hides any series above it,
+    and superlinear weak-scaling efficiency is a real thing that happens when the
+    single-GPU baseline is not saturated. Hiding it would turn a finding that
+    needs explaining into a figure that looks tidy.
+    """
+    top = 1.25
+    for line in ax.get_lines():
+        ydata = [y for y in line.get_ydata() if y == y]
+        if ydata:
+            top = max(top, max(ydata) * 1.08)
+    ax.set_ylim(0, top)
+
+
 def _median_by(frame: pd.DataFrame, keys: list[str], metric: str) -> pd.DataFrame:
     """Median with min/max across repetitions, plus the repetition count."""
     g = frame.groupby(keys, dropna=False)[metric]
@@ -169,7 +185,7 @@ def main() -> int:
     ax.set_xscale("log", base=2)
     ax.set_xticks(ideal)
     ax.set_xticklabels([str(t) for t in ideal])
-    ax.set_ylim(0, 1.25)
+    _fit_efficiency_ylim(ax)
 
     # ---- panel 3: weak scaling efficiency -----------------------------------
     ax = axes[2]
@@ -199,7 +215,7 @@ def main() -> int:
         ax.set_xscale("log", base=2)
         ax.set_xticks(ideal)
         ax.set_xticklabels([str(t) for t in ideal])
-        ax.set_ylim(0, 1.25)
+        _fit_efficiency_ylim(ax)
 
     first = ok.iloc[0]
     n_reps = int(ok.groupby(["group_label", "phase_label"]).size().min())
