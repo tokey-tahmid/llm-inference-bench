@@ -62,6 +62,8 @@ log() { printf '[analysis %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 # Each script is independent: one having no data yet must not stop the others.
 SCRIPTS=(
     analysis/plot_phase1.py
+    analysis/plot_scaling.py
+    analysis/plot_pareto_and_cache.py
     analysis/plot_packing_interference.py
 )
 
