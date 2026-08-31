@@ -1,0 +1,55 @@
+# Where the scheduler stops keeping up: saturation and preemption.
+#
+#   sbatch --array=0-5 slurm/run_sweep.sh configs/saturation.yaml
+#
+# Every earlier sweep stopped at c=256. This one drives past the point where the
+# KV cache can hold every admitted sequence, which is where the scheduler has to
+# start preempting: evicting a partially decoded sequence and recomputing it
+# later. Preemption is invisible in throughput alone (the engine keeps serving)
+# but shows up sharply in the latency tail, so p99 and the preemption counter are
+# the quantities of interest rather than tokens/sec.
+#
+# Open-loop arrivals are included at rates spanning under- and over-load. Closed
+# loop cannot show queueing collapse, because backpressure throttles the offered
+# load: the client simply waits. Only a fixed arrival rate independent of
+# completions lets the backlog grow, which is the regime a real serving system
+# has to survive.
+
+name: saturation
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 8192
+  max_num_seqs: 1024
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [1, 2, 4]
+
+  load:
+    - {mode: closed_loop, concurrency: 256,  num_requests: 1536}
+    - {mode: closed_loop, concurrency: 512,  num_requests: 2048}
+    - {mode: closed_loop, concurrency: 1024, num_requests: 3072}
+    - {mode: open_loop, request_rate: 4,  num_requests: 512}
+    - {mode: open_loop, request_rate: 16, num_requests: 1024}
+    - {mode: open_loop, request_rate: 64, num_requests: 2048}

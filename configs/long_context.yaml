@@ -1,0 +1,60 @@
+# Long-context prefill scaling and KV pressure.
+#
+#   sbatch --array=0-5 slurm/run_sweep.sh configs/long_context.yaml
+#
+# The earlier length sweep topped out at 8192 input tokens. This one pushes to
+# 16384 with a 32768-token context window, which is where two effects that are
+# invisible at short context start to bind:
+#
+#   - Prefill is O(n^2) in attention over the prompt, so TTFT should grow
+#     super-linearly with input length once the sequence is long enough for
+#     attention to dominate the linear projections.
+#   - KV cache per sequence grows linearly with context, so at fixed memory the
+#     achievable concurrency falls. A configuration that serves 128 concurrent
+#     1k-token requests may not serve 8 at 16k.
+#
+# Together these are the capacity-planning question P2 is built around, measured
+# here on the P1 harness while the allocation exists.
+#
+# Output is held short (32 tokens) deliberately: this sweep is about prefill, and
+# a long decode would dilute the effect under study.
+
+name: long-context
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 32768
+  max_num_seqs: 128
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [1, 2, 4]
+
+  load:
+    - {mode: closed_loop, concurrency: 1,  num_requests: 16}
+    - {mode: closed_loop, concurrency: 8,  num_requests: 64}
+    - {mode: closed_loop, concurrency: 32, num_requests: 192}
+
+  workload:
+    - {label: in2048,  input_len: 2048,  output_len: 32}
+    - {label: in4096,  input_len: 4096,  output_len: 32}
+    - {label: in8192,  input_len: 8192,  output_len: 32}
+    - {label: in16384, input_len: 16384, output_len: 32}

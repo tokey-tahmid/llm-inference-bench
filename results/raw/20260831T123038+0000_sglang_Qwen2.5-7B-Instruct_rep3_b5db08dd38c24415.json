@@ -1,0 +1,102 @@
+{
+  "measurements": {
+    "engine_log_path": "/mnt/tier2/project/p201362/ttahmid/inference-work/logs/engine_sglang_Qwen2.5-7B-Instruct_tp1_bc6a025cc2da.log"
+  },
+  "provenance": {
+    "backend_image_digest": "sha256:9e148f5ac788e856a06166bd6347a831831eb9fcfab4d1770874823a7c29a1a1",
+    "backend_name": "sglang",
+    "backend_version": "0.5.18",
+    "cuda_version": "13.2",
+    "driver_version": "595.71.05",
+    "error": "sglang exited with code -9 during startup. Log tail:\n    scheduler = Scheduler(\n                ^^^^^^^^^^\n  File \"/sgl-workspace/sglang/python/sglang/srt/managers/scheduler.py\", line 518, in __init__\n    self.init_model_worker()\n  File \"/sgl-workspace/sglang/python/sglang/srt/managers/scheduler.py\", line 1006, in init_model_worker\n    self.init_all_cuda_graphs()\n  File \"/sgl-workspace/sglang/python/sglang/srt/managers/scheduler.py\", line 989, in init_all_cuda_graphs\n    self.tp_worker.init_cuda_graphs()\n  File \"/sgl-workspace/sglang/python/sglang/srt/managers/tp_worker.py\", line 426, in init_cuda_graphs\n    self.model_runner.init_cuda_graphs(\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/model_runner.py\", line 985, in init_cuda_graphs\n    capture = capture_cuda_graphs(\n              ^^^^^^^^^^^^^^^^^^^^\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/model_runner_components/cuda_graph_setup.py\", line 166, in capture_cuda_graphs\n    prefill = capture_prefill_graph(\n              ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/model_runner_components/cuda_graph_setup.py\", line 388, in capture_prefill_graph\n    prefill_runner = PrefillCudaGraphRunner(model_runner)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py\", line 527, in __init__\n    self.capture()\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py\", line 1329, in capture\n    self._capture_one_stream()\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py\", line 1352, in _capture_one_stream\n    self.capture_one_shape(num_tokens)\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py\", line 1422, in capture_one_shape\n    self.backend.capture_one(\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py\", line 129, in capture_one\n    with BreakableCUDAGraphCapture(\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py\", line 350, in __exit__\n    self._end_current_segment()\n  File \"/sgl-workspace/sglang/python/sglang/srt/model_executor/runner_backend_utils/breakable_cuda_graph/breakable_cuda_graph.py\", line 397, in _end_current_segment\n    graph.capture_end()\n  File \"/usr/local/lib/python3.12/dist-packages/torch/cuda/graphs.py\", line 169, in capture_end\n    super().capture_end()\nRuntimeError: num_active_captures_ > 0 INTERNAL ASSERT FAILED at \"/__w/pytorch/pytorch/c10/cuda/CUDACachingAllocator.cpp\":3211, please report a bug to PyTorch. markCaptureEnd called with no captures in progress\n\n[rank0]:[W831 14:30:27.413134757 CUDAGraph.cpp:352] Warning: CUDA warning: invalid argument (function reset)\n[2026-08-31 14:30:27] Received sigquit from a child process. It usually means the child failed.\n[2026-08-31 14:30:27] kill_process_tree called: parent_pid=15335, include_parent=True, pid=15335",
+    "exact_command_line": "/mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/src/llm_inference_bench/cli.py run /mnt/tier2/users/u104240/apps/inference-work/llm-inference-bench/configs/memory_utilisation.yaml --group-index 7",
+    "full_config_dict": {
+      "engine": {
+        "block_size": null,
+        "dtype": "bfloat16",
+        "enable_prefix_caching": false,
+        "extra_args": [],
+        "gpu_memory_utilization": 0.95,
+        "host": "127.0.0.1",
+        "kv_cache_dtype": "auto",
+        "max_model_len": 8192,
+        "max_num_seqs": 512,
+        "model_id": "Qwen/Qwen2.5-7B-Instruct",
+        "model_path": "/mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28",
+        "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+        "pipeline_parallel_size": 1,
+        "port": 8107,
+        "seed": 0,
+        "spec_decode": {
+          "draft_model": null,
+          "mode": "off",
+          "ngram_prompt_lookup_max": 4,
+          "ngram_prompt_lookup_min": 1,
+          "num_speculative_tokens": 0
+        },
+        "tensor_parallel_size": 1
+      },
+      "group_id": "bc6a025cc2da",
+      "group_label": "sglang_Qwen2.5-7B-Instruct_tp1",
+      "load": {
+        "burstiness": 1.0,
+        "concurrency": 256,
+        "mode": "closed_loop",
+        "request_rate": null
+      },
+      "phase_id": "87ba0a9eb33f",
+      "phase_label": "closed_c256",
+      "sweep_name": "memory-utilisation",
+      "workload": {
+        "fingerprint": "cc3b42f614ee2f43",
+        "input_len": {
+          "distribution": "fixed",
+          "high": null,
+          "low": null,
+          "mean": 1024,
+          "sigma": 0.0
+        },
+        "num_prefix_groups": 1,
+        "num_requests": 1536,
+        "output_len": {
+          "distribution": "fixed",
+          "high": null,
+          "low": null,
+          "mean": 256,
+          "sigma": 0.0
+        },
+        "prompt_format": "token_ids",
+        "seed": 1234,
+        "shared_prefix_ratio": 0.0,
+        "shared_prefix_tokens": 512
+      }
+    },
+    "git_sha": "6274d7e62c675d3c8608d02183d82a3b3b4f92e9-dirty",
+    "gpu_count": 4,
+    "gpu_memory_gb": 40.0,
+    "gpu_model": "NVIDIA A100-SXM4-40GB",
+    "gpu_topology": "\u001b[4mGPU0\tGPU1\tGPU2\tGPU3\tNIC0\tNIC1\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tNV4\tNV4\tNV4\tSYS\tSYS\t24-31,88-95\t3\t\tN/A\nGPU1\tNV4\t X \tNV4\tNV4\tPIX\tSYS\t8-15,72-79\t1\t\tN/A\nGPU2\tNV4\tNV4\t X \tNV4\tSYS\tPIX\t56-63,120-127\t7\t\tN/A\nGPU3\tNV4\tNV4\tNV4\t X \tSYS\tSYS\t40-47,104-111\t5\t\tN/A\nNIC0\tSYS\tPIX\tSYS\tSYS\t X \tSYS\t\t\t\t\nNIC1\tSYS\tSYS\tPIX\tSYS\tSYS\t X \t\t\t\t\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n\nNIC Legend:\n\n  NIC0: mlx5_0\n  NIC1: mlx5_1",
+    "harness_version": "0.1.0",
+    "hostname": "mel2167",
+    "model_id": "Qwen/Qwen2.5-7B-Instruct",
+    "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "notes": {},
+    "python_version": "3.12.14",
+    "repetition_index": 3,
+    "run_id": "b5db08dd38c24415",
+    "slurm": {
+      "slurm_account": "p201466",
+      "slurm_array_job_id": "5163518",
+      "slurm_array_task_id": "7",
+      "slurm_cpus_per_task": "64",
+      "slurm_job_id": "5163518",
+      "slurm_nnodes": "1",
+      "slurm_nodelist": "mel2167",
+      "slurm_partition": "gpu"
+    },
+    "slurm_job_id": "5163518",
+    "status": "launch_failed",
+    "utc_timestamp": "2026-08-31T12:30:38+00:00",
+    "warmup": false
+  }
+}
