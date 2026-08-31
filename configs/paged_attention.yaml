@@ -1,0 +1,60 @@
+# PagedAttention knobs: KV block granularity and KV cache dtype.
+#
+#   sbatch --array=0-11 slurm/run_sweep.sh configs/paged_attention.yaml
+#
+# Both axes were confirmed present in the pinned images by the capability probe,
+# including SGLang's --page-size, which is its name for vLLM's --block-size.
+#
+# Block size is the KV cache paging granularity. Larger blocks mean fewer
+# lookups and less bookkeeping, but coarser rounding: a sequence occupying one
+# token of a 64-token block wastes 63 tokens of cache. The trade should show up
+# as achievable concurrency at fixed memory, not as raw speed.
+#
+# fp8 KV cache halves the bytes per cached token. On A100 (sm80) there are NO
+# native fp8 tensor cores, so this is a pure storage-capacity play, not a compute
+# one: the cache holds twice as much and the attention kernel dequantises on
+# read. That distinction matters for reading the result, and is the reason an
+# fp8 *weight* quantisation was rejected for the model axis while fp8 KV cache is
+# perfectly legitimate here.
+#
+# Directly feeds P2 (kv-cache-envelope) as well as P1.
+
+name: paged-attention
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 8192
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [1]
+  block_size: [16, 32, 64]
+  kv_cache_dtype: [auto, fp8]
+
+  # High concurrency is where block granularity and cache capacity actually
+  # bind. At c=1 the cache is nearly empty and every setting looks identical.
+  load:
+    - {mode: closed_loop, concurrency: 32,  num_requests: 384}
+    - {mode: closed_loop, concurrency: 128, num_requests: 1024}
+    - {mode: closed_loop, concurrency: 256, num_requests: 1536}

@@ -1,0 +1,52 @@
+# How much of the card the engine is allowed to claim.
+#
+#   sbatch --array=0-7 slurm/run_sweep.sh configs/memory_utilisation.yaml
+#
+# gpu_memory_utilization sets the fraction of the card the engine may occupy;
+# whatever is left over becomes KV cache headroom, which sets how many sequences
+# can be in flight before the scheduler starts preempting. Sweeping it under
+# deliberate oversubscription (c=256 on a 7B model) should show preemption
+# appear as the fraction rises and the cache is squeezed.
+#
+# NOTE for cross-backend reading: SGLang's --mem-fraction-static is NOT the same
+# quantity as vLLM's --gpu-memory-utilization. vLLM's is the total pool the
+# engine may occupy; SGLang's is the static (weights plus KV) share with the
+# remainder left for activations. Matched numeric values therefore do NOT mean
+# matched memory budgets, and the two curves must be read as separate series
+# rather than compared point for point. Recording both under one axis name is a
+# deliberate simplification of the harness, and this is the caveat it costs.
+
+name: memory-utilisation
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 8192
+  max_num_seqs: 512
+  dtype: bfloat16
+  enable_prefix_caching: false
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  shared_prefix_ratio: 0.0
+  seed: 1234
+  prompt_format: token_ids
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [1]
+  gpu_memory_utilization: [0.70, 0.80, 0.90, 0.95]
+
+  load:
+    - {mode: closed_loop, concurrency: 64,  num_requests: 512}
+    - {mode: closed_loop, concurrency: 256, num_requests: 1536}
