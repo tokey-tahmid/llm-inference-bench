@@ -95,6 +95,38 @@ class RequestResult:
         return self.end_time - self.send_time
 
     @property
+    def chunks_received(self) -> int:
+        return len(self.chunk_times)
+
+    @property
+    def mean_itl_per_token(self) -> float | None:
+        """Per-token decode latency derived from the decode span, not from chunks.
+
+        This is the trustworthy inter-token number whenever a chunk may carry
+        more than one token, which is exactly what speculative decoding does: the
+        engine verifies several draft tokens in one step and streams them
+        together. Counting chunks then measures the *step* interval and reports
+        speculation as a latency regression when it is a 3x improvement.
+
+        Measured here as (end - first_token) / (tokens - 1) using the server's own
+        token count, so it is correct regardless of how the stream was chunked.
+        """
+        if (
+            self.end_time is None
+            or self.first_token_time is None
+            or self.output_tokens_received < 2
+        ):
+            return None
+        return (self.end_time - self.first_token_time) / (self.output_tokens_received - 1)
+
+    @property
+    def tokens_per_chunk(self) -> float | None:
+        """>1 means the stream batched tokens, so chunk-derived ITL is inflated."""
+        if not self.chunk_times or self.output_tokens_received < 1:
+            return None
+        return self.output_tokens_received / len(self.chunk_times)
+
+    @property
     def inter_token_latencies(self) -> list[float]:
         """Gaps between successive decode chunks, normalised per token.
 

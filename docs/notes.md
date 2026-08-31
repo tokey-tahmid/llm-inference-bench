@@ -309,3 +309,71 @@ The figure now pins every axis except the one under study and names the slice in
 the caption. General lesson, and the same one as the reconciler's usability
 guard: **an aggregate is only as meaningful as the thing it is aggregating over,
 and a plot will happily average across a distinction that matters.**
+
+---
+
+## 2026-08-31 — inter-token latency was measuring steps, not tokens
+
+The speculative-decoding sweep produced two numbers that cannot both be true:
+
+| | ITL p50 | output tok/s |
+|---|---|---|
+| no speculation | 12.21 ms | 80.2 |
+| n-gram speculation | 13.60 ms (**+11.3 %**) | 243.0 (**+203 %**) |
+
+Throughput triples while per-token latency supposedly gets worse. If tokens
+arrive three times faster, the time between them cannot rise.
+
+### The check that settled it
+
+If one SSE chunk carries one token, then `itl_p50 x (tokens - 1)` should
+reconstruct the decode span `e2e - ttft`. Measured ratio of predicted to actual:
+
+| | ratio |
+|---|---|
+| no speculation | **0.87** (chunks ~ tokens, ITL is per token) |
+| n-gram speculation | **3.28** (each chunk carried ~3.3 tokens) |
+
+So the real decode was 1.059 s for 256 tokens, **4.1 ms/token**, against a
+reported ITL of 13.6 ms. Inter-token latency was measuring the *scheduler step
+interval*, not the token interval.
+
+### Why this is the worst kind of bug
+
+It does not look like an error. Every number is plausible, every run succeeds,
+the artifacts are clean, and the conclusion it produces (*"speculation costs 11 %
+inter-token latency, so it trades latency for throughput"*) is a perfectly
+reasonable-sounding claim that someone could defend in an interview. It is simply
+backwards: speculation improved per-token latency roughly threefold.
+
+The mechanism is obvious in hindsight and was written down in the code before it
+was violated. `RequestResult.chunk_token_counts` carries this comment:
+
+> A chunk is not always exactly one token, and the token count per chunk is kept
+> so ITL is never silently miscomputed as per-chunk.
+
+and the code then appended a hardcoded `1` for every chunk. **The comment
+described the intent; the code did the opposite.** A comment is not a control.
+
+Speculative decoding is precisely the feature that breaks the one-token-per-chunk
+assumption, because verifying several draft tokens in a single forward pass and
+streaming them together is the entire point of it. The benchmark's own headline
+speculative-decoding result was the thing the bug was guaranteed to corrupt.
+
+### Fix, and full recovery of already-collected data
+
+`(end - first_token) / (tokens - 1)` uses the server's own token count and is
+correct regardless of how the stream was chunked. Now reported as
+`itl_per_token_s` alongside the chunk-derived `itl_s`, with
+`median_tokens_per_chunk` and a `stream_batches_tokens` flag so the discrepancy
+can never again be invisible.
+
+Nothing needed re-measuring: every request's ttft, e2e and token count are
+already stored per artifact, so the decode span divides out exactly. That is the
+second time storing generous per-request detail has rescued a metric bug after
+the fact, the first being the raw Prometheus exposition.
+
+**Rule this suggests:** any derived rate should be cross-checked against an
+independently derived total. Throughput and ITL are computed from different
+quantities, and their disagreement is what exposed this. A single metric with no
+redundant path to the same physical fact cannot audit itself.

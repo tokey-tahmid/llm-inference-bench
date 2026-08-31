@@ -173,14 +173,38 @@ def load(
             "preemptions_total": telemetry.get("preemptions_total"),
             "error": prov.get("error"),
         }
-        for metric in ("ttft_s", "itl_s", "e2e_latency_s"):
+        # Recover per-token ITL for artifacts written before the metric existed.
+        # Every request's ttft, e2e and token count are stored, so the decode
+        # span divides out exactly; nothing needs re-measuring.
+        per_tok = []
+        for r in meas.get("per_request", []) or []:
+            if not r.get("success"):
+                continue
+            n, e2e, ttft = r.get("output_tokens"), r.get("e2e_s"), r.get("ttft_s")
+            if n and e2e is not None and ttft is not None and n > 1:
+                per_tok.append((e2e - ttft) / (n - 1))
+        if per_tok:
+            per_tok.sort()
+            row["itl_per_token_s_p50_recovered"] = per_tok[len(per_tok) // 2]
+            row["itl_per_token_s_p95_recovered"] = per_tok[int(len(per_tok) * 0.95) - 1]
+
+        for metric in ("ttft_s", "itl_s", "e2e_latency_s", "itl_per_token_s"):
             block = meas.get(metric) or {}
             for stat in ("p50", "p95", "p99", "mean", "min", "max", "n"):
                 row[f"{metric}_{stat}"] = block.get(stat)
 
         rows.append(row)
 
-    frame = add_prefix_cache_deltas(pd.DataFrame(rows))
+    frame = pd.DataFrame(rows)
+    # Prefer the live metric, fall back to the value recovered from per-request
+    # timings, so old and new artifacts are directly comparable.
+    if "itl_per_token_s_p50" in frame.columns:
+        frame["itl_per_token_s_p50"] = frame["itl_per_token_s_p50"].combine_first(
+            frame.get("itl_per_token_s_p50_recovered")
+        )
+    elif "itl_per_token_s_p50_recovered" in frame.columns:
+        frame["itl_per_token_s_p50"] = frame["itl_per_token_s_p50_recovered"]
+    frame = add_prefix_cache_deltas(frame)
     report = LoadReport(
         files_found=found,
         parsed=len(rows),

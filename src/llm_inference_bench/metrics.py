@@ -84,6 +84,11 @@ def compute_metrics(load: LoadResult, *, warmup_excluded: int = 0) -> dict[str, 
     else:
         window = None
 
+    # Per-token decode latency derived from the decode span. Preferred over the
+    # chunk-derived value whenever the stream batches tokens.
+    per_token_itls = [v for v in (r.mean_itl_per_token for r in ok) if v is not None]
+    tpc = [v for v in (r.tokens_per_chunk for r in ok) if v is not None]
+
     metrics: dict[str, Any] = {
         "mode": str(load.mode),
         "concurrency": load.concurrency,
@@ -94,7 +99,12 @@ def compute_metrics(load: LoadResult, *, warmup_excluded: int = 0) -> dict[str, 
         "warmup_excluded": warmup_excluded,
         "measurement_window_s": window,
         "ttft_s": _percentiles(ttfts),
+        # Chunk-derived: correct only when one chunk carries one token.
         "itl_s": _percentiles(itls),
+        # Decode-span derived: correct regardless of chunking. This is the one to
+        # quote for speculative decoding.
+        "itl_per_token_s": _percentiles(per_token_itls),
+        "tokens_per_chunk": _percentiles(tpc),
         "e2e_latency_s": _percentiles(e2es),
         "prompt_tokens_total": prompt_tokens,
         "output_tokens_total": output_tokens,
@@ -150,6 +160,16 @@ def compute_metrics(load: LoadResult, *, warmup_excluded: int = 0) -> dict[str, 
             }
             for r in mismatched[:5]
         ]
+
+    # If the stream batched tokens, say so loudly: `itl_s` is then a per-STEP
+    # interval, not a per-token one, and quoting it would invert the conclusion
+    # about speculative decoding.
+    if tpc:
+        median_tpc = float(np.median(tpc))
+        metrics["stream_batches_tokens"] = bool(median_tpc > 1.15)
+        metrics["median_tokens_per_chunk"] = median_tpc
+        if median_tpc > 1.15:
+            metrics["itl_s_is_per_chunk_not_per_token"] = True
 
     # Prompt-token fidelity: did the engine see the token count we sent?
     reported = [
