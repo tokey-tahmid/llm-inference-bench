@@ -1,0 +1,54 @@
+# Large-model axis: Qwen2.5-32B-Instruct bf16, backend x TP{2,4} x prefix caching.
+#
+#   sbatch --array=0-7 slurm/run_sweep.sh configs/full_32b.yaml
+#
+# 62 GB of weights, so TP=1 cannot fit in 40 GB and is excluded rather than
+# left to fail: its absence is a stated fact, not a hole. At TP=2 the weights
+# take 62 of 80 GB, leaving little for KV cache, so max_model_len is held to
+# 4096 and gpu_memory_utilization raised. If TP=2 still OOMs that is a real
+# capacity boundary and is recorded as an `oom` artifact, not dropped.
+#
+# Fewer phases than the 7B matrix: a 32B model decodes far slower, so the same
+# phase list would not finish in the window.
+
+name: full-32b
+
+repetitions: 5
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-32B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-32B-Instruct/snapshots/5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+    revision: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+
+model: Qwen/Qwen2.5-32B-Instruct
+
+engine:
+  max_model_len: 4096
+  max_num_seqs: 128
+  gpu_memory_utilization: 0.92
+  dtype: bfloat16
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 128
+  seed: 1234
+  prompt_format: token_ids
+  shared_prefix_tokens: 512
+  num_prefix_groups: 4
+
+axes:
+  backend: [vllm, sglang]
+  tensor_parallel_size: [2, 4]
+  enable_prefix_caching: [false, true]
+
+  load:
+    - {mode: closed_loop, concurrency: 1,  num_requests: 24}
+    - {mode: closed_loop, concurrency: 16, num_requests: 192}
+    - {mode: closed_loop, concurrency: 64, num_requests: 512}
+    - {mode: closed_loop, concurrency_per_gpu: 16, num_requests: 384}
+
+  workload:
+    - {label: pfx0,  shared_prefix_ratio: 0.0}
+    - {label: pfx60, shared_prefix_ratio: 0.6}

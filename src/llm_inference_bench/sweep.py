@@ -91,6 +91,14 @@ class LoadSpec:
     request_rate_per_gpu: float | None = None
     burstiness: float = 1.0
 
+    # Set by resolve() to remember that this point originated as a per-GPU (weak
+    # scaling) spec. Without it the distinction is destroyed by resolution and
+    # the two scaling modes collide: at TP=2 a weak 16-per-GPU point and a strong
+    # c=32 point both become "closed_c32", producing two different phases with
+    # identical labels inside one server group. That is unrecoverable in the
+    # artifacts, and it would silently corrupt the scaling study.
+    resolved_from_per_gpu: float | None = None
+
     def __post_init__(self) -> None:
         if self.mode is LoadMode.CLOSED_LOOP and not (
             self.concurrency or self.concurrency_per_gpu
@@ -118,27 +126,36 @@ class LoadSpec:
                 self,
                 concurrency=self.concurrency_per_gpu * tensor_parallel_size,
                 concurrency_per_gpu=None,
+                resolved_from_per_gpu=self.concurrency_per_gpu,
             )
         if self.request_rate_per_gpu:
             return replace(
                 self,
                 request_rate=self.request_rate_per_gpu * tensor_parallel_size,
                 request_rate_per_gpu=None,
+                resolved_from_per_gpu=self.request_rate_per_gpu,
             )
         return self
 
     @property
     def is_weak_scaling(self) -> bool:
-        return bool(self.concurrency_per_gpu or self.request_rate_per_gpu)
+        """True both before and after resolution."""
+        return bool(
+            self.concurrency_per_gpu
+            or self.request_rate_per_gpu
+            or self.resolved_from_per_gpu
+        )
 
     def label(self) -> str:
-        # The label must distinguish weak from strong scaling, or two phases that
-        # happen to resolve to the same concurrency at one TP degree become
-        # indistinguishable in the artifacts.
-        if self.concurrency_per_gpu:
-            return f"weak_closed_c{self.concurrency_per_gpu}pergpu"
-        if self.request_rate_per_gpu:
-            return f"weak_open_r{self.request_rate_per_gpu:g}pergpu"
+        # The label must distinguish weak from strong scaling, and must keep
+        # doing so AFTER resolve() has folded the per-GPU value into a concrete
+        # concurrency. Checking only concurrency_per_gpu here was a real bug:
+        # every weak point silently relabelled itself as a strong one.
+        base = self.concurrency_per_gpu or self.resolved_from_per_gpu
+        if base and self.mode is LoadMode.CLOSED_LOOP:
+            return f"weak_closed_c{base:g}pergpu"
+        if base:
+            return f"weak_open_r{base:g}pergpu"
         if self.mode is LoadMode.CLOSED_LOOP:
             return f"closed_c{self.concurrency}"
         return f"open_r{self.request_rate:g}"

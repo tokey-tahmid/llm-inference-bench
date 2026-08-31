@@ -231,3 +231,41 @@ def test_open_loop_weak_scaling_resolves_rate(tmp_path) -> None:
     for tp in (1, 2, 4):
         rates = [p.load.request_rate for p in by_tp[tp].phases if p.load.request_rate]
         assert 2.5 * tp in rates
+
+
+def test_no_two_phases_in_a_group_share_a_label(tmp_path) -> None:
+    """Phase labels must be unique within a server group.
+
+    This is the test that would have caught the real bug: resolve() folded the
+    per-GPU value into a concrete concurrency and dropped the marker, so at TP=2
+    the weak 16-per-GPU point and the strong c=32 point both became "closed_c32".
+    Two different phases with the same label inside one group cannot be told
+    apart in results/raw, which silently corrupts the scaling comparison.
+
+    Checked at the Phase level rather than the LoadSpec level, because the Phase
+    label is what actually lands in the artifact.
+    """
+    groups = SweepDefinition.from_yaml(_write(tmp_path, WEAK)).expand()
+    for g in groups:
+        labels = [p.label for p in g.phases]
+        assert len(labels) == len(set(labels)), (
+            f"duplicate phase labels in {g.label}: {labels}"
+        )
+
+
+def test_weak_scaling_label_survives_resolution(tmp_path) -> None:
+    groups = SweepDefinition.from_yaml(_write(tmp_path, WEAK)).expand()
+    for g in groups:
+        weak = [p for p in g.phases if p.load.is_weak_scaling]
+        assert len(weak) == 1
+        assert weak[0].load.label().startswith("weak_")
+        # ...and it still knows the per-GPU base it came from.
+        assert weak[0].load.resolved_from_per_gpu == 8
+
+
+def test_phase_ids_are_unique_within_a_group(tmp_path) -> None:
+    """Same argument as labels, for the hash the artifact records."""
+    groups = SweepDefinition.from_yaml(_write(tmp_path, WEAK)).expand()
+    for g in groups:
+        ids = [p.phase_id() for p in g.phases]
+        assert len(ids) == len(set(ids)), f"duplicate phase ids in {g.label}"

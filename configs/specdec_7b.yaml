@@ -1,0 +1,64 @@
+# Speculative decoding: does it stop helping at high concurrency, and why?
+#
+#   sbatch --array=0-3 slurm/run_sweep.sh configs/specdec_7b.yaml
+#
+# n-gram speculation only. It needs no draft model, so it isolates the
+# speculation effect from any draft-model loading or quality confound.
+#
+# The concurrency ladder is the point. Speculation trades extra compute per step
+# for fewer steps, which pays at low concurrency where the decode is
+# memory-bandwidth-bound and the GPU has spare FLOPs. At high concurrency
+# batching already fills the machine, so the speculative tokens compete with real
+# work and the win should erode or invert. Acceptance rate is recorded alongside,
+# so a falling win can be attributed to acceptance or to saturation rather than
+# guessed at.
+#
+# vLLM only: the two engines parameterise n-gram speculation differently (a
+# prompt-lookup window vs a suffix-automaton trie), so a cross-backend comparison
+# here would not be like for like. See the SGLang adapter's note.
+
+name: specdec-7b
+
+repetitions: 5
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+backend: vllm
+
+engine:
+  max_model_len: 8192
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.90
+  dtype: bfloat16
+  seed: 0
+
+workload:
+  input_len: 1024
+  output_len: 256
+  seed: 1234
+  prompt_format: token_ids
+  # A high shared-prefix ratio gives n-gram lookup real repeated text to match
+  # against; with no repetition its acceptance rate is near zero by construction
+  # and the experiment would measure nothing.
+  shared_prefix_ratio: 0.6
+  shared_prefix_tokens: 512
+  num_prefix_groups: 2
+
+axes:
+  backend: [vllm]
+  tensor_parallel_size: [1, 2]
+  spec_decode:
+    - off
+    - {mode: ngram, num_speculative_tokens: 4, ngram_prompt_lookup_min: 2, ngram_prompt_lookup_max: 8}
+
+  load:
+    - {mode: closed_loop, concurrency: 1,   num_requests: 32}
+    - {mode: closed_loop, concurrency: 4,   num_requests: 64}
+    - {mode: closed_loop, concurrency: 16,  num_requests: 192}
+    - {mode: closed_loop, concurrency: 64,  num_requests: 512}
+    - {mode: closed_loop, concurrency: 128, num_requests: 768}
