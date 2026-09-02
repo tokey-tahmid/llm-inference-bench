@@ -7,11 +7,14 @@ backend behind one interface, so that adding a third engine requires a new adapt
 class and a registry entry, and nothing else. vLLM and SGLang are the two
 implementations.
 
-> **Status: no measurements yet.** The harness is built and the environment is
-> characterised, but no benchmark has been run. This README will carry numbers only
-> once they trace to a committed artifact under `results/raw/`. There are
-> deliberately no placeholder figures, example results, or illustrative numbers
-> anywhere in this repository.
+> **Status: measured.** The harness has produced 4,573 raw artifacts under
+> `results/raw/` across eleven sweeps: phase-1 validation, full 7B and 32B
+> matrices for both backends, TP-scaling, prefix caching, speculative decoding,
+> length scaling, PagedAttention block-size / memory-utilisation, saturation,
+> long context, and packing interference. See `results/RESULTS.md` for the
+> current tables (generated, not transcribed). One coverage gap remains
+> unmet — a TP=8 multi-node point — and is being attempted; whether it succeeds
+> or fails will be recorded honestly in `docs/notes.md`.
 
 ## What it measures
 
@@ -110,12 +113,114 @@ batch/context is a real boundary. Launch failures, timeouts and configurations a
 backend cannot support each produce an artifact with a status, so the sweep matrix
 has no silent holes.
 
+## Results
+
+The numbers live in [`results/RESULTS.md`](results/RESULTS.md) and the figures
+in `results/figures/`. Both are generated from `results/raw/` and are never
+edited by hand; regeneration is the single command in the "Reproducing"
+section below. This README links to them rather than transcribing them because
+"every number traces to a committed raw artifact" only stays true if no human
+retypes the numbers.
+
+The measurements come from the exact software and hardware described in the
+provenance block of every raw artifact:
+
+- **Hardware:** 4x NVIDIA A100-SXM4-40GB, driver **595.71.05**, CUDA 13.2.
+  Full NVLink mesh (`NV4` between every intra-node GPU pair); no PCIe path
+  between GPUs on a node. Multi-node crosses 2x 200 Gb/s InfiniBand.
+- **Backends:** vLLM **0.27.1** and SGLang **0.5.18**, both pinned by image
+  digest in `provision.lock.json`.
+- **Models:** Qwen2.5-7B-Instruct at revision
+  `a09a35458c702b33eeacc393d103063234e8bc28` and Qwen2.5-32B-Instruct at
+  revision `5ede1c97bbabb0aa9f9baec87cf35664fea1fe1e`, both bf16.
+- **Methodology:** N>=3 per configuration (N=5 for the loaded 7B points where
+  spread was ~11%), one warmup repetition per config recorded and excluded,
+  median with min/max reported, spread shown on every plot.
+
+### Headline findings
+
+Each of these is a section in `docs/notes.md`, with the raw job IDs that
+observed it. They are summarised here so the README stands on its own; the
+tables and figures live in `results/RESULTS.md` and `results/figures/`.
+
+- **Strong-scaling parallel efficiency falls to ~0.69 at TP=4** for vLLM on
+  Qwen2.5-7B at c=1024 (2.75x speedup on 4 GPUs). SGLang lands at 0.65 at
+  c=128. Every intra-node GPU pair here is NVLink `NV4`, so the falloff is
+  *not* an interconnect effect: it is kernel efficiency, per-replica memory
+  bandwidth, or scheduler overhead. This is exactly why the TP=8 multi-node
+  point matters — it is the *only* configuration where the interconnect is
+  observable.
+- **Prefix caching hits the theoretical bound at every shared-prefix ratio
+  measured on vLLM** (0.294 measured vs 0.294 bound at ratio 0.6; 0.446 vs
+  0.446 at 0.9). SGLang reports a hit rate of 0 at every ratio — the metric is
+  named differently in its `/metrics` exposition; adapter fix is
+  outstanding and noted in `docs/notes.md` open questions.
+- **Speculative decoding stops helping throughput between c=64 and c=128** on
+  a single vLLM replica, at n-gram acceptance ~0.9. The mechanism is
+  saturation, not prediction quality: acceptance barely drops while the
+  latency win rises. See docs/notes.md.
+- **Packed placement is not measurement-safe.** Running four TP=1 replicas
+  NUMA-pinned on one billed node degrades TTFT p50 by 150% at c=1 and output
+  throughput by 34% at c=8, versus running one replica alone with three GPUs
+  idle. Headline numbers therefore use unpacked runs (three-quarters of each
+  billed hour is spent on idle GPUs), and only a documented trend-vs-absolute
+  distinction saves any packed data.
+- **Prefill dominates TTFT and scales with input length** (see the length
+  sweep in `results/RESULTS.md`); **decode dominates end-to-end latency and
+  is memory-bandwidth-bound at low concurrency**, transitioning to
+  compute-bound at high concurrency. This is the axis the P1 spec asked
+  the writeup to address.
+
+### Known limitations
+
+Recorded here rather than in a footnote, per the "failed configurations are
+data" rule:
+
+- **Dirty git tree.** 2,794 of 4,573 raw artifacts were written from a
+  `-dirty` tree during the intensive collection window. Provenance is exact
+  (git SHA is stamped with the `-dirty` suffix, image digest is pinned), but
+  a clean-checkout replay of *those specific artifacts* would not
+  bit-reproduce. Sweeps produced after 2026-08-31 are on a clean tree.
+- **SGLang 32B runs at TP=4 all launched-failed** (SIGKILL during startup).
+  Recorded in `results/RESULTS.md`'s "Configurations that did not run"
+  section. The 32B scaling curve on SGLang is single-point at TP=2 because
+  of this.
+- **SGLang prefix-cache hit rate is reported as 0** even at shared-prefix
+  ratio 0.9. The vLLM path was corrected by finding the counter renames
+  (see `docs/notes.md`); the SGLang counter names differ and the adapter is
+  not yet updated. That column reads "not measured" until the counter is
+  correctly wired.
+- **TP=8 multi-node.** In-flight at the time of writing. If Ray bootstrap on
+  Apptainer proves unreliable the attempt and failure will be recorded in
+  `docs/notes.md`; no data point will be fabricated to fill the axis.
+
 ## Reproducing
 
-Every figure and table is regenerable from `results/raw/` by one documented
-command, which will be stated here alongside the first results. Raw artifacts are
-append-only, written read-only, and carry full provenance: git SHA (with a
-`-dirty` suffix when the tree was not clean), hostname, Slurm job ID, GPU model
-and count, driver and CUDA version, `nvidia-smi topo -m` verbatim, backend version
-and image digest, model revision SHA, the complete config, and the exact command
-line.
+Every figure and table is regenerable end-to-end from `results/raw/` by one
+documented command:
+
+```bash
+sbatch slurm/run_analysis.sh
+```
+
+That job reads only `results/raw/`, writes only `results/figures/` and
+`results/RESULTS.md`, and never invents a value. It runs on the `gpu`
+partition because `p201466` has no CPU allocation, but uses no GPU.
+
+Raw artifacts are append-only, written read-only, and carry full provenance:
+git SHA (with a `-dirty` suffix when the tree was not clean), hostname,
+Slurm job ID, GPU model and count, driver and CUDA version, `nvidia-smi topo -m`
+verbatim, backend version and image digest, model revision SHA, the complete
+config, and the exact command line.
+
+To capture or verify the performance regression baseline:
+
+```bash
+sbatch slurm/run_regression_check.sh --sweep-name full-7b --update-baseline
+sbatch slurm/run_regression_check.sh --sweep-name full-7b
+```
+
+The check compares median metrics per (backend, model, TP, prefix caching,
+phase) against a stored baseline in `baselines/p1.json`. The tolerance is
+derived from the baseline's own measured spread, not picked from the air; a
+missing configuration is a failure, not a pass; only degradation is flagged.
