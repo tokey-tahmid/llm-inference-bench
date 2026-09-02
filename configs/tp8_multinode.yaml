@@ -1,0 +1,47 @@
+# TP=8 across two nodes via Ray. Deliberately minimal so the interconnect
+# effect is what changes vs the TP=4 single-node point.
+#
+# The runner in src/ does not orchestrate Ray. This config is consumed by an
+# externally-orchestrated launch (`slurm/run_tp8_ray.sh`) that starts the Ray
+# cluster and vLLM server outside the harness, then hands the endpoint to the
+# harness's load client via a purpose-built driver script.
+
+name: tp8-multinode
+
+repetitions: 3
+warmup_repetitions: 1
+
+models:
+  Qwen/Qwen2.5-7B-Instruct:
+    path: /mnt/tier2/project/p201362/ttahmid/inference-work/hf_cache/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+
+model: Qwen/Qwen2.5-7B-Instruct
+
+engine:
+  max_model_len: 4096
+  max_num_seqs: 256
+  gpu_memory_utilization: 0.85
+  dtype: bfloat16
+  seed: 0
+  # tensor_parallel_size is fixed here: this config expresses a single point,
+  # not a sweep. The whole exercise is to compare with TP=4 single-node.
+  tensor_parallel_size: 8
+
+workload:
+  input_len: 1024
+  output_len: 256
+  seed: 1234
+  prompt_format: token_ids
+  shared_prefix_ratio: 0.0
+
+axes:
+  backend: [vllm]
+
+  load:
+    - {mode: closed_loop, concurrency: 8,   num_requests: 64}
+    - {mode: closed_loop, concurrency: 64,  num_requests: 256}
+    - {mode: closed_loop, concurrency: 128, num_requests: 512}
+
+  workload:
+    - {label: pfx0, shared_prefix_ratio: 0.0}
