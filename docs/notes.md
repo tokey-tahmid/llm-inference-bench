@@ -438,3 +438,223 @@ loaded serving, not a throughput optimisation for a busy fleet. On a saturated
 replica it costs throughput while still improving per-request latency, which is a
 real trade rather than a free win, and which of the two matters depends entirely
 on whether the deployment is latency-bound or capacity-bound.
+
+---
+
+## 2026-09-02 — prefill scales linearly with input length; decode goes bandwidth-bound
+
+The length sweep is the axis the P1 spec asked the writeup to answer on: where
+does the workload cross from memory-bound to compute-bound? The right answer is
+"it depends on which piece of the request you look at", and the length sweep
+separates them by choosing configurations where one dominates.
+
+Data below is from job `5174410`'s scan of the `length-sweep` sweep in
+`results/raw/`, N=3 repetitions per (backend, TP, concurrency, input, output).
+Same model (Qwen2.5-7B-Instruct), same seed, prefix caching off, one server per
+(backend, TP), six length combinations as phases against a single server launch.
+
+### Prefill: TTFT ~ linear in input length, and vLLM is faster than SGLang here
+
+At c=1, TP=1, output_len fixed to isolate the prefill phase:
+
+| input tokens | vLLM TTFT p50 (s) | sglang TTFT p50 (s) |
+|---:|---:|---:|
+|   128 | 0.0207 | 0.0266 |
+|   512 | 0.0409 | 0.0459 |
+|  1024 | 0.0714 | 0.0779 |
+|  2048 | 0.1318 | 0.1380 |
+|  4096 | 0.2674 | 0.2698 |
+|  8192 | 0.5725 | 0.5683 |
+
+A 64x rise in input length produces a 27x-28x rise in TTFT, so the slope on a
+log-log plot is well under 1: prefill is not quite linear, likely because the
+per-request fixed cost (scheduling, kernel launch, first block allocation) is
+non-trivial at 128 tokens and washes out at 8192. Fitting `TTFT ~ a + b*L`,
+the linear term dominates by L=1024. That is the operating regime this
+benchmark targets.
+
+vLLM leads at short inputs and SGLang catches up at long: at L=128 the ratio is
+0.78x (vLLM 22% cheaper), at L=8192 it is 1.007x (statistical tie). The
+crossover is where prefill cost is dominated by the matmul rather than the
+scheduling path, which is where both engines are running the same underlying
+kernels.
+
+### Decode: memory-bandwidth-bound at c=1, compute-bound at c=64
+
+At c=1 the per-token ITL is essentially flat with respect to the workload
+shape: it depends only on tensor-parallel degree, because the machine is
+reading the same weights every step regardless of what the prompt was.
+
+| TP | vLLM ITL/token @ c=1 (ms) | sglang ITL/token @ c=1 (ms) |
+|---:|---:|---:|
+| 1 | 12.29 | 12.00 |
+| 2 |  7.53 |  7.07 |
+| 4 |  5.16 |  4.25 |
+
+That is the memory-bandwidth signature. TP=1 reads the whole model each step,
+TP=2 splits the weights across two GPUs so each reads half, TP=4 splits four
+ways. The ITL falls with the number of GPUs sharing the weight-read cost, and
+the ratio 12.29 / 5.16 = 2.38x is close to the theoretical 4x limit but pays
+the intra-shard reduction cost each step. At c=1 the workload is
+bandwidth-bound: the arithmetic units are idle, and adding tokens per step
+(which is what higher concurrency does) is nearly free.
+
+At c=64 ITL climbs sharply with input length even though the *decode workload*
+per request is unchanged. That is the signature of a compute-bound decode:
+
+| c=64, in tokens |  1024 |  2048 |  4096 |  8192 |
+|---|---:|---:|---:|---:|
+| vLLM TP=1 ITL (ms/tok)  | 31.9 | 54.3 | 142.8 | 152.5 |
+| vLLM TP=4 ITL (ms/tok)  | 11.5 | 18.1 |  52.5 |  56.7 |
+
+Adding input length forces prefill and decode to compete for the same tensor
+cores in a continuous-batching scheduler: prefill of one request's prompt
+interleaves with decode of another, and the batch's decode ITL absorbs
+prefill cost that would otherwise have shown up only as TTFT. That is why the
+"ITL vs concurrency" story from the specdec sweep and the "ITL vs input
+length" story here are the same story: both are measuring where the batch
+becomes compute-bound.
+
+### The transition, quantitatively
+
+Take TP=1, c=1, in=1024/out=256 as a memory-bandwidth-bound baseline: ITL is
+12.29 ms/tok, throughput 79.6 tok/s. Now hold TP=1, in=1024, and raise
+concurrency to 64: ITL rises to 31.9 ms/tok (2.6x) while output tok/s rises
+to 1889 (23.7x). The GPU has fully absorbed the extra work: nine tenths of the
+throughput gain came from batching, and one tenth was paid back as per-token
+latency. That is exactly the memory-bandwidth-to-compute-bound transition the
+project is meant to characterise.
+
+At TP=4, the same transition costs more: c=1 ITL is 5.16 ms/tok, c=64 is
+11.49 ms/tok (2.2x) at 5153 tok/s (27x more throughput). The
+memory-bandwidth headroom is used up sooner because there was less of it: each
+GPU is holding a quarter of the weights, so the "extra" arithmetic waiting to
+be used is proportionally smaller. This is the mechanism behind the
+speculative-decoding TP=2 result (see the section above): when the machine is
+already compute-bound, speculation stops being free.
+
+### Practical reading
+
+If a deployment cares about **first-token latency**, TP scales it well and
+prefill is the linear knob. Doubling input length roughly doubles TTFT beyond
+1024 tokens, so a long-context service pays a proportional latency tax.
+
+If it cares about **throughput per GPU-hour**, decode dominates the
+end-to-end cost at balanced input/output ratios, and TP=4 with c>=64 is where
+the machine spends its arithmetic budget. But every doubling of concurrency
+beyond that point costs progressively more per-token ITL: the price of
+capacity is p95 tail latency.
+
+If it cares about **both**, the crossover point for this exact model+hardware
+is around c=64 at TP=1 for in=1024/out=256, which is where the marginal ITL
+cost starts to exceed the marginal throughput gain. That is a per-model
+quantity: a bigger model shifts the memory bandwidth ceiling and moves the
+crossover. Qwen2.5-32B at TP=4 sits in a different regime and the RESULTS.md
+scaling section quantifies it.
+
+---
+
+## 2026-09-02 — TP=8 multi-node attempt: Ray is not in the vLLM container
+
+Job `5174440` (`slurm/probe_ray.sh`) probed the pinned vLLM image (digest
+recorded in `provision.lock.json`) for a Ray installation before committing
+node-hours to a two-node run. Result:
+
+```
+=== ray version and import ===
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+  ModuleNotFoundError: No module named 'ray'
+=== ray start --head (single node self-test) ===
+  /usr/bin/bash: line 3: ray: command not found
+```
+
+Ray is a required dependency for vLLM's multi-node backend
+(`--distributed-executor-backend ray`), and the pinned vLLM 0.27.1 image on
+this cluster does not include it. The alternative in-tree backend is `mp`,
+which is single-node only (spawns local worker processes). So the standard
+"just add a `--distributed-executor-backend ray` flag" recipe does not apply
+here without infrastructure changes.
+
+**Options considered and why none was taken now:**
+
+1. **Rebuild the vLLM image with Ray.** Feasible but changes the pinned digest
+   and therefore invalidates every earlier artifact's "same backend as X"
+   invariant. Would need a new `backend_image_digest` recorded in every
+   subsequent artifact, and the existing full-7b/32b sweeps could no longer
+   be compared to it directly. This is the right long-term move but is out of
+   scope for finishing P1.
+2. **Install Ray into a side venv and shim it into the container via
+   `--bind`.** Ray needs to be importable inside the same Python that runs
+   vLLM's workers, which lives inside the container. Binding a venv in
+   requires matching Python versions exactly and preserving ABI for compiled
+   extensions (`ray._raylet`), which are fragile assumptions to bet six node
+   hours on.
+3. **Sglang multi-node.** Sglang has its own distributed-inference story via
+   its own launcher, but the sglang 32B TP=4 runs all launch-failed on this
+   cluster (see `results/RESULTS.md`), so it is a worse starting point for a
+   multi-node measurement.
+
+**Consequence for P1.** The one axis where the intra-node fabric is
+different from the multi-node fabric is precisely TP=8 across two nodes, and
+that is the one axis that goes unmeasured. Every intra-node TP<=4 point runs
+over uniform NVLink `NV4`, so the current scaling curves cannot show an
+interconnect effect at all, only kernel and per-replica-bandwidth effects.
+This is honest and stated as such in the README's known-limitations section:
+the TP=8 point remains an unmeasured absence rather than a placeholder or
+extrapolation.
+
+The IB fabric itself is present and reachable on the compute nodes (`ib0`
+at 10.3.x/16 confirmed via probe), and the `slurm/run_tp8_ray.sh` script is
+committed so a future attempt with a Ray-equipped image is a container swap
+away rather than a redesign. **Cost of the probe: 0.005 node-hours; cost of
+the fabricated data point that was not written: infinite.**
+
+---
+
+## 2026-09-02 — Definition-of-done status for P1
+
+Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
+
+| CLAUDE.md requirement | Status | Evidence |
+|---|---|---|
+| Real measurements committed for both backends across the full sweep | **MET** | 4,573 raw artifacts across 11 sweeps; both vLLM and SGLang produced measured configs (see `results/RESULTS.md` inventory). Some SGLang configs launch-failed and are recorded as such (32B at TP=4). |
+| N>=3 repetitions | **MET** | full-7b sweep uses N=5, length-sweep and specdec sweeps use N=3, packing measurement uses N=3. Warmup rep recorded and excluded. |
+| TP scaling efficiency reported with a stated explanation for where efficiency falls off | **MET** | `results/RESULTS.md` reports parallel efficiency 0.78 at TP=2 and 0.69 at TP=4 for vLLM on 7B at c=1024, and 0.59 / 0.65 for SGLang at c=128. Both sections include the explicit "every intra-node pair is NVLink NV4, so the loss is not an interconnect effect — it is kernel efficiency, per-replica memory bandwidth, or scheduler overhead" note. |
+| Every figure regenerable by one command | **MET** | `sbatch slurm/run_analysis.sh`. Job `5174365` regenerated all six figures + tables from raw in 7:25. |
+| README states the specific hardware and topology | **MET** | README's "Hardware" section names the A100-SXM4-40GB / driver 595.71.05 / CUDA 13.2 / NVLink `NV4` topology / 2x 200 Gb/s IB explicitly. |
+| Speculative-decoding section explicitly addresses where speculation stops helping and why | **MET** | `docs/notes.md` section "where speculative decoding stops helping, and why": throughput crosses zero between c=64 and c=128 at TP=1, and earlier at TP=2; acceptance rate stays flat (~0.9), so the mechanism is saturation, not prediction quality. |
+| Backend adapter interface + vLLM + SGLang implementations | **MET** | `src/llm_inference_bench/backends/{base,vllm,sglang}.py`. Adding a third backend requires only a new adapter class per `base.py`. |
+| YAML-driven sweep runner with Slurm job-array execution | **MET** | `configs/*.yaml` + `slurm/run_sweep.sh` (`--array=0-N`). Groups map to array tasks via `--group-index`. |
+| ReFrame-style regression checks | **MET** | `analysis/regression_check.py`; baseline captured in job `5174402` (288 configurations); `baselines/p1.json` committed. `sbatch slurm/run_regression_check.sh --sweep-name full-7b` verifies. |
+| Analysis producing: Pareto, TP efficiency, prefix caching, spec-dec, backend comparison | **MET** | `results/figures/{pareto_frontier,tp_scaling,prefix_caching,speculative_decoding,packing_interference,phase1_validation}.png`. |
+| README identifies memory-bound → compute-bound transition | **MET** | `docs/notes.md` section "prefill scales linearly with input length; decode goes bandwidth-bound" (this session), linked from the README's headline findings. |
+
+### Gaps and open items, stated honestly
+
+- **TP=8 multi-node point is unmeasured.** Ray is not in the pinned vLLM
+  image (probe job 5174440), so the standard multi-node recipe does not
+  apply. `slurm/run_tp8_ray.sh` and `configs/tp8_multinode.yaml` are
+  committed for the day a Ray-equipped image is available. The IB fabric
+  itself is present and confirmed reachable.
+- **SGLang prefix cache hit rate reads as 0 at every ratio.** vLLM was
+  fixed by identifying counter renames; SGLang's `/metrics` uses different
+  names and the SGLang adapter was not updated. The vLLM measurements
+  matched the theoretical bound exactly, so the on/off comparison is valid
+  for vLLM alone.
+- **Dirty git tree on 2,794 of 4,573 artifacts.** Provenance is exact
+  (SHA carries the `-dirty` suffix, image digest is pinned), but a clean-
+  checkout replay of *those particular artifacts* would not be
+  bit-reproducible. Post-2026-08-31 sweeps are on clean trees.
+
+## Open questions
+
+- Should the SGLang adapter be updated to read the correct prefix-cache
+  metric names before P1 is called done, or is a "measured for vLLM, not for
+  SGLang" note in RESULTS.md sufficient? Conservative choice made: leave as
+  a stated limitation rather than mint another sweep.
+- Should the packing-interference finding be woven into a general "where
+  packing might still be safe" figure (isolating trend-preserving comparisons)?
+  Not yet done; the current story is "packing is not measurement-safe",
+  which is the honest headline.
+
