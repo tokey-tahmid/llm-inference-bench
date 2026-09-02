@@ -188,6 +188,45 @@ def section_prefix_cache(ok: pd.DataFrame) -> list[str]:
     return out
 
 
+def section_length_sweep(ok: pd.DataFrame) -> list[str]:
+    """Prefill vs decode: TTFT should scale with input length, output tok/s with
+    output length. This is the section the P1 README answers on."""
+    out = ["## Prefill vs decode", ""]
+    sub = ok[ok["sweep_name"] == "length-sweep"]
+    if sub.empty:
+        return out + ["Not yet measured.", ""]
+    out += [
+        "One server per (backend, TP), six length combinations per server as phases.",
+        "Short input / long output isolates decode (memory-bandwidth bound at low",
+        "concurrency); long input / short output isolates prefill (compute bound).",
+        "",
+    ]
+    for (backend, tp), grp in sorted(sub.groupby(["backend", "tensor_parallel_size"])):
+        if grp.empty:
+            continue
+        out += [
+            f"### {backend} · TP={tp:g} · Qwen2.5-7B-Instruct",
+            "",
+            "| concurrency | input | output | TTFT p50 (s) | ITL p50 (ms/tok) | output tok/s |",
+            "|---|---|---|---|---|---|",
+        ]
+        for (c, il, ol), phase in grp.groupby(
+            ["concurrency", "input_len", "output_len"], dropna=False,
+        ):
+            itl_ms = phase["itl_per_token_s_p50"].dropna() * 1000
+            itl_str = (
+                f"{itl_ms.median():.3g} [{itl_ms.min():.3g}, {itl_ms.max():.3g}] "
+                f"N={len(itl_ms)}"
+                if not itl_ms.empty else "not measured"
+            )
+            out.append(
+                f"| {c:g} | {il:g} | {ol:g} | {_spread(phase, 'ttft_s_p50', 4)} "
+                f"| {itl_str} | {_spread(phase, 'output_tokens_per_s', 4)} |"
+            )
+        out.append("")
+    return out
+
+
 def section_packing(ok: pd.DataFrame) -> list[str]:
     out = ["## Cost of packed placement", ""]
     iso = ok[ok["placement"] == "isolated"]
@@ -260,6 +299,7 @@ def main() -> int:
         ]
     lines += section_inventory(frame, report)
     lines += section_scaling(ok) if not ok.empty else []
+    lines += section_length_sweep(ok) if not ok.empty else []
     lines += section_prefix_cache(ok) if not ok.empty else []
     lines += section_packing(ok) if not ok.empty else []
     lines += section_failures(frame)
