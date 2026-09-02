@@ -45,28 +45,35 @@ RESULTS_RAW = REPO / "results" / "raw"
 FIGURES = REPO / "results" / "figures"
 
 
-def check_integrity(frame, report) -> list[str]:
+def check_integrity(frame) -> list[str]:
     """Conditions that would make the measurements untrustworthy.
 
     Returned as a list of complaints rather than raised, so every problem is
     reported in one pass instead of one per run.
+
+    ``frame`` must be scoped to a single sweep AND must include warmup rows, so
+    the counts computed here describe that sweep and nothing else. A figure
+    scoped to sweep A must not carry a warning about dirty runs from sweep B.
     """
     problems: list[str] = []
 
-    if report.warmup_excluded == 0:
+    warmup_excluded = int(frame["warmup"].fillna(False).astype(bool).sum())
+    dirty_git_runs = int(
+        frame["git_sha"].fillna("").astype(str).str.endswith("-dirty").sum()
+    )
+
+    if warmup_excluded == 0:
         problems.append(
             "no warmup repetitions found: either warmup_repetitions was 0, or the "
             "first repetition of each config is being reported as a measurement"
         )
-    if report.dirty_git_runs:
+    if dirty_git_runs:
         problems.append(
-            f"{report.dirty_git_runs} run(s) came from a dirty git tree; these are "
+            f"{dirty_git_runs} run(s) came from a dirty git tree; these are "
             "not reproducible from a clean checkout"
         )
-    if report.unparseable:
-        problems.append(f"{len(report.unparseable)} artifact(s) failed to parse")
 
-    ok = frame[frame["status"] == "ok"]
+    ok = frame[(frame["status"] == "ok") & (~frame["warmup"].fillna(False).astype(bool))]
     if ok.empty:
         problems.append("no successful runs at all")
         return problems
@@ -90,7 +97,11 @@ def check_integrity(frame, report) -> list[str]:
     if ok["client_may_be_bottleneck"].fillna(False).any():
         problems.append("at least one phase may have been limited by the load client")
 
-    failed = frame[frame["status"] != "ok"]
+    # Warmup rows can carry status="ok" (they simply ran without erroring) and
+    # are intentionally excluded from analysis rather than failed, so they
+    # should not be counted as non-ok either.
+    non_warmup = frame[~frame["warmup"].fillna(False).astype(bool)]
+    failed = non_warmup[non_warmup["status"] != "ok"]
     if not failed.empty:
         counts = failed["status"].value_counts().to_dict()
         problems.append(f"non-ok runs present (recorded, not dropped): {counts}")
@@ -110,7 +121,10 @@ def main() -> int:
         )
         return 1
 
-    frame, report = load(RESULTS_RAW, include_warmup=False, include_failed=True)
+    # Include warmup rows in the initial load so the scoped integrity check can
+    # count them per-sweep. The plotting path below drops warmup and non-ok
+    # rows before aggregating, so nothing bleeds through.
+    frame, report = load(RESULTS_RAW, include_warmup=True, include_failed=True)
     print(report.summary())
     print()
 
@@ -123,14 +137,17 @@ def main() -> int:
         print("no phase1-validation artifacts present; nothing to plot.")
         return 1
 
-    problems = check_integrity(frame, report)
+    # The integrity counts (warmup, dirty, non-ok) are derived from the scoped
+    # frame so a phase-1 figure is not stamped with warnings that belong to
+    # some other sweep sharing results/raw/.
+    problems = check_integrity(frame)
     if problems:
         print("INTEGRITY PROBLEMS:")
         for p in problems:
             print(f"  - {p}")
         print()
 
-    ok = frame[frame["status"] == "ok"]
+    ok = frame[(frame["status"] == "ok") & (~frame["warmup"].fillna(False).astype(bool))]
     if ok.empty:
         print("no successful runs; not plotting.")
         return 1
