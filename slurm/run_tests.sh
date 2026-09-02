@@ -53,8 +53,14 @@ echo "=== pytest ==="
 "${LIB_VENV}/bin/python" -m pytest -q --tb=short
 
 echo
+echo "=== identifier verification (guards rule 1 in prose) ==="
+"${LIB_VENV}/bin/python" analysis/verify_identifiers.py || IDENT_FAILED=1
+
+echo
 echo "=== sweep expansion dry run (no GPU, no cost) ==="
 "${LIB_VENV}/bin/python" -m llm_inference_bench.cli expand configs/phase1_validation.yaml
 
 echo
-echo "TESTS COMPLETE${RUFF_FAILED:+ (ruff reported issues, see above)}"
+echo "TESTS COMPLETE${RUFF_FAILED:+ (ruff issues)}${IDENT_FAILED:+ (UNVERIFIED IDENTIFIERS)}"
+[ -n "${IDENT_FAILED:-}" ] && exit 1
+exit 0

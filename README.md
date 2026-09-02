@@ -132,7 +132,7 @@ provenance block of every raw artifact:
   digest in `provision.lock.json`.
 - **Models:** Qwen2.5-7B-Instruct at revision
   `a09a35458c702b33eeacc393d103063234e8bc28` and Qwen2.5-32B-Instruct at
-  revision `5ede1c97bbabb0aa9f9baec87cf35664fea1fe1e`, both bf16.
+  revision `5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd`, both bf16.
 - **Methodology:** N>=3 per configuration (N=5 for the loaded 7B points where
   spread was ~11%), one warmup repetition per config recorded and excluded,
   median with min/max reported, spread shown on every plot.
