@@ -6,7 +6,7 @@
 python analysis/make_results_tables.py
 ```
 
-Generated 2026-09-02T13:57:23+00:00 from `results/raw/` (4573 artifacts).
+Generated 2026-09-14T11:47:01+00:00 from `results/raw/` (4573 artifacts).
 
 ## Provenance
 
@@ -218,10 +218,10 @@ rounding.
 
 | backend | shared-prefix ratio | measured hit rate | theoretical bound |
 |---|---|---|---|
-| sglang | 0 | 0 [0, 0] N=164 | 0 |
-| sglang | 0.3 | 0 [0, 0] N=144 | 0.146 |
-| sglang | 0.6 | 0 [0, 0] N=164 | 0.294 |
-| sglang | 0.9 | 0 [0, 0] N=144 | 0.446 |
+| sglang | 0 | 0 [0, 1.91e-06] N=164 | 0 |
+| sglang | 0.3 | 0.144 [0.0938, 0.148] N=144 | 0.146 |
+| sglang | 0.6 | 0.29 [0.208, 0.297] N=164 | 0.294 |
+| sglang | 0.9 | 0.44 [0.391, 0.447] N=144 | 0.446 |
 | vllm | 0 | 0 [0, 0] N=179 | 0 |
 | vllm | 0.3 | 0.146 [0.0938, 0.148] N=144 | 0.146 |
 | vllm | 0.6 | 0.294 [0.208, 0.298] N=184 | 0.294 |

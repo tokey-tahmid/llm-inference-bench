@@ -43,6 +43,8 @@ class SGLangAdapter(BackendAdapter):
     capabilities = frozenset(
         {
             Capability.PREFIX_CACHING,
+            # Derived from prompt_tokens_total and uncached_prompt_tokens, since
+            # SGLang exposes no hits/queries pair. See engine_telemetry.
             Capability.PREFIX_CACHE_METRICS,
             Capability.SPEC_DECODE_DRAFT_MODEL,
             Capability.TENSOR_PARALLEL,
@@ -187,15 +189,46 @@ class SGLangAdapter(BackendAdapter):
             vals = [v for k, v in raw.items() if k.startswith(prefix)]
             return sum(vals) if vals else None
 
-        hit_rate = total("sglang:cache_hit_rate")
-        if hit_rate is not None:
-            # SGLang has reported this as a percentage in some releases. Normalise
-            # to a fraction so it is directly comparable to the vLLM hit rate.
-            out["prefix_cache_hit_rate"] = hit_rate / 100.0 if hit_rate > 1.0 else hit_rate
+        # SGLang 0.5.18 exposes NO hits/queries counter pair. `sglang:cache_hit_rate`
+        # exists but reads 0, so trusting it reported "caching never works on
+        # SGLang", which was an artefact of reading the wrong metric rather than a
+        # property of the engine.
+        #
+        # What it does expose is the pair needed to derive the same quantity:
+        #   sglang:prompt_tokens_total                  -- all prompt tokens seen
+        #   sglang:uncached_prompt_tokens_histogram_sum -- those NOT served from cache
+        # so hit rate = 1 - uncached / total.
+        #
+        # Both are CUMULATIVE for the life of the server process, exactly like
+        # vLLM's, so a single reading mixes every phase that server has served.
+        # The raw counters are therefore exported here and the per-phase delta is
+        # taken in analysis, where the phase ordering is known.
+        prompt_tokens = total("sglang:prompt_tokens_total")
+        uncached = total("sglang:uncached_prompt_tokens_histogram_sum")
+        if prompt_tokens is not None:
+            out["prompt_tokens_cumulative"] = prompt_tokens
+        if uncached is not None:
+            out["uncached_prompt_tokens_cumulative"] = uncached
+        if prompt_tokens and prompt_tokens > 0 and uncached is not None:
+            # Cumulative rate: correct only for a server's first phase. Analysis
+            # prefers the delta; this is kept so a single-phase run still reports.
+            out["prefix_cache_hit_rate"] = 1.0 - (uncached / prompt_tokens)
+
+        gauge = total("sglang:cache_hit_rate")
+        if gauge is not None:
+            # Retained for comparison, under a name that cannot be mistaken for
+            # the derived rate. Observed to read 0 even when caching demonstrably
+            # works, so it is recorded but never used.
+            out["sglang_reported_cache_hit_rate_gauge"] = (
+                gauge / 100.0 if gauge > 1.0 else gauge
+            )
 
         usage = total("sglang:token_usage")
         if usage is not None:
             out["kv_cache_usage_frac"] = usage
+        kv_gb = total("sglang:kv_cache_memory_usage_gb")
+        if kv_gb is not None:
+            out["kv_cache_memory_gb"] = kv_gb
 
         # SGLang also exposes a richer snapshot outside Prometheus. Capture it
         # verbatim: it carries scheduler state that the exposition format omits.
