@@ -168,6 +168,12 @@ def load(
             # delta; see add_prefix_cache_deltas.
             "raw_hits": _counter(telemetry.get("raw_prometheus") or {}, _HIT_KEYS),
             "raw_queries": _counter(telemetry.get("raw_prometheus") or {}, _QUERY_KEYS),
+            "raw_prompt_tokens": _counter(
+                telemetry.get("raw_prometheus") or {}, _SGL_PROMPT_KEYS
+            ),
+            "raw_uncached_prompt_tokens": _counter(
+                telemetry.get("raw_prometheus") or {}, _SGL_UNCACHED_KEYS
+            ),
             "spec_acceptance_rate": telemetry.get("spec_acceptance_rate"),
             "kv_cache_usage_frac": telemetry.get("kv_cache_usage_frac"),
             "preemptions_total": telemetry.get("preemptions_total"),
@@ -231,6 +237,12 @@ def _safe_iter(
 # Both vLLM spellings are listed: 0.27.1 dropped the `gpu_` infix.
 _HIT_KEYS = ("vllm:gpu_prefix_cache_hits_total", "vllm:prefix_cache_hits_total")
 _QUERY_KEYS = ("vllm:gpu_prefix_cache_queries_total", "vllm:prefix_cache_queries_total")
+# SGLang exposes no hits/queries pair at all. It exposes total prompt tokens and
+# the subset NOT served from cache, so the same quantity is 1 - uncached/total.
+# Both are cumulative per server, so they are differenced per phase exactly like
+# vLLM's counters.
+_SGL_PROMPT_KEYS = ("sglang:prompt_tokens_total",)
+_SGL_UNCACHED_KEYS = ("sglang:uncached_prompt_tokens_histogram_sum",)
 
 
 def _counter(raw: dict[str, Any], names: tuple[str, ...]) -> float | None:
@@ -267,6 +279,7 @@ def add_prefix_cache_deltas(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.sort_values(["group_label", "utc_timestamp", "repetition"]).copy()
     frame["prefix_cache_hit_rate_delta"] = float("nan")
     frame["prefix_cache_queries_delta"] = float("nan")
+    has_sgl = "raw_prompt_tokens" in frame.columns
 
     for _, idx in frame.groupby("group_label", dropna=False).groups.items():
         sub = frame.loc[idx]
@@ -276,7 +289,19 @@ def add_prefix_cache_deltas(frame: pd.DataFrame) -> pd.DataFrame:
         # treat it as unusable rather than reporting a nonsensical rate.
         valid = (dq > 0) & (dh >= 0)
         frame.loc[idx, "prefix_cache_queries_delta"] = dq.where(valid)
-        frame.loc[idx, "prefix_cache_hit_rate_delta"] = (dh / dq).where(valid)
+        rate = (dh / dq).where(valid)
+
+        # SGLang path: derive the same rate from prompt-token counters.
+        if has_sgl:
+            dt = sub["raw_prompt_tokens"].diff()
+            du = sub["raw_uncached_prompt_tokens"].diff()
+            sgl_valid = (dt > 0) & (du >= 0)
+            sgl_rate = (1.0 - (du / dt)).where(sgl_valid)
+            rate = rate.combine_first(sgl_rate)
+            frame.loc[idx, "prefix_cache_queries_delta"] = (
+                frame.loc[idx, "prefix_cache_queries_delta"].combine_first(dt.where(sgl_valid))
+            )
+        frame.loc[idx, "prefix_cache_hit_rate_delta"] = rate
 
     # Prefer the delta; fall back to whatever the adapter normalised live.
     frame["prefix_cache_hit_rate"] = frame["prefix_cache_hit_rate_delta"].combine_first(
