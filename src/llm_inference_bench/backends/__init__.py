@@ -42,9 +42,7 @@ def get_adapter(
         raise KeyError(
             f"unknown backend {name!r}; available: {', '.join(available_backends())}"
         ) from None
-    return cls(
-        sif_path=sif_path, image_digest=image_digest, backend_version=backend_version
-    )
+    return cls(sif_path=sif_path, image_digest=image_digest, backend_version=backend_version)
 
 
 __all__ = [

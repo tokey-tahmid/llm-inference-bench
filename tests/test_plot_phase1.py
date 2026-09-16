@@ -18,7 +18,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analysis"))
 
-from plot_phase1 import check_integrity  # noqa: E402
+from plot_phase1 import check_integrity
 
 
 def _row(**overrides) -> dict:
