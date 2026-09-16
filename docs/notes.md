@@ -637,11 +637,14 @@ Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
   apply. `slurm/run_tp8_ray.sh` and `configs/tp8_multinode.yaml` are
   committed for the day a Ray-equipped image is available. The IB fabric
   itself is present and confirmed reachable.
-- **SGLang prefix cache hit rate reads as 0 at every ratio.** vLLM was
-  fixed by identifying counter renames; SGLang's `/metrics` uses different
-  names and the SGLang adapter was not updated. The vLLM measurements
-  matched the theoretical bound exactly, so the on/off comparison is valid
-  for vLLM alone.
+- **SGLang prefix cache hit rate: resolved.** It first read 0 at every
+  ratio because the adapter trusted `sglang:cache_hit_rate`, which reads 0
+  even while caching works. SGLang 0.5.18 has no hits/queries pair; the rate
+  is now derived as 1 - uncached/prompt tokens from
+  `sglang:uncached_prompt_tokens_histogram_sum` and
+  `sglang:prompt_tokens_total`, per-phase delta, recovered from the raw
+  Prometheus text already stored in each artifact. It matches the bound as
+  closely as vLLM does (`results/RESULTS.md`).
 - **Dirty git tree on 2,794 of 4,573 artifacts.** Provenance is exact
   (SHA carries the `-dirty` suffix, image digest is pinned), but a clean-
   checkout replay of *those particular artifacts* would not be
@@ -649,10 +652,6 @@ Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
 
 ## Open questions
 
-- Should the SGLang adapter be updated to read the correct prefix-cache
-  metric names before P1 is called done, or is a "measured for vLLM, not for
-  SGLang" note in RESULTS.md sufficient? Conservative choice made: leave as
-  a stated limitation rather than mint another sweep.
 - Should the packing-interference finding be woven into a general "where
   packing might still be safe" figure (isolating trend-preserving comparisons)?
   Not yet done; the current story is "packing is not measurement-safe",
