@@ -12,9 +12,9 @@ implementations.
 > matrices for both backends, TP-scaling, prefix caching, speculative decoding,
 > length scaling, PagedAttention block-size / memory-utilisation, saturation,
 > long context, and packing interference. See `results/RESULTS.md` for the
-> current tables (generated, not transcribed). One coverage gap remains
-> unmet — a TP=8 multi-node point — and is being attempted; whether it succeeds
-> or fails will be recorded honestly in `docs/notes.md`.
+> current tables (generated, not transcribed). One coverage gap remains: the
+> TP=8 multi-node point is unmeasured, because the pinned vLLM image ships
+> without Ray (see Known limitations).
 
 ## What it measures
 
@@ -75,7 +75,7 @@ also have outbound internet.
 ```bash
 sbatch provision.sh                   # containers, python env, weights
 sbatch provision.sh harness           # editable install only
-sbatch slurm/run_tests.sh             # unit tests and lint (cpu partition)
+sbatch slurm/run_tests.sh             # unit tests and lint (gpu partition, no GPU used)
 sbatch slurm/probe_capabilities.sh    # verify adapter flags against the images
 sbatch slurm/run_sweep.sh configs/phase1_validation.yaml
 ```
@@ -147,14 +147,15 @@ tables and figures live in `results/RESULTS.md` and `results/figures/`.
   Qwen2.5-7B at c=1024 (2.75x speedup on 4 GPUs). SGLang lands at 0.65 at
   c=128. Every intra-node GPU pair here is NVLink `NV4`, so the falloff is
   *not* an interconnect effect: it is kernel efficiency, per-replica memory
-  bandwidth, or scheduler overhead. This is exactly why the TP=8 multi-node
-  point matters — it is the *only* configuration where the interconnect is
-  observable.
-- **Prefix caching hits the theoretical bound at every shared-prefix ratio
-  measured on vLLM** (0.294 measured vs 0.294 bound at ratio 0.6; 0.446 vs
-  0.446 at 0.9). SGLang reports a hit rate of 0 at every ratio — the metric is
-  named differently in its `/metrics` exposition; adapter fix is
-  outstanding and noted in `docs/notes.md` open questions.
+  bandwidth, or scheduler overhead. A TP=8 multi-node point would be the
+  *only* configuration where the interconnect is observable; it is not
+  measured (see Known limitations).
+- **Prefix caching reaches the theoretical bound on both backends.** The
+  medians sit at or just under the no-eviction bound at every shared-prefix
+  ratio (table in `results/RESULTS.md`). SGLang exposes no hits/queries
+  counter and its `cache_hit_rate` gauge reads 0 even while caching works, so
+  its rate is derived from `prompt_tokens_total` and
+  `uncached_prompt_tokens_histogram_sum`, taken as a per-phase delta.
 - **Speculative decoding stops helping throughput between c=64 and c=128** on
   a single vLLM replica, at n-gram acceptance ~0.9. The mechanism is
   saturation, not prediction quality: acceptance barely drops while the
@@ -185,14 +186,13 @@ data" rule:
   Recorded in `results/RESULTS.md`'s "Configurations that did not run"
   section. The 32B scaling curve on SGLang is single-point at TP=2 because
   of this.
-- **SGLang prefix-cache hit rate is reported as 0** even at shared-prefix
-  ratio 0.9. The vLLM path was corrected by finding the counter renames
-  (see `docs/notes.md`); the SGLang counter names differ and the adapter is
-  not yet updated. That column reads "not measured" until the counter is
-  correctly wired.
-- **TP=8 multi-node.** In-flight at the time of writing. If Ray bootstrap on
-  Apptainer proves unreliable the attempt and failure will be recorded in
-  `docs/notes.md`; no data point will be fabricated to fill the axis.
+- **TP=8 multi-node is not measured.** Probe job 5174440 found no Ray in the
+  pinned vLLM image, and Ray is what vLLM's multi-node backend needs.
+  Rebuilding the image would change the pinned digest that every other sweep
+  was measured under, which breaks cross-sweep comparability, so the axis is
+  left empty rather than filled from a different software stack.
+  `slurm/run_tp8_ray.sh` and `configs/tp8_multinode.yaml` are committed for a
+  Ray-equipped image.
 
 ## Reproducing
 
