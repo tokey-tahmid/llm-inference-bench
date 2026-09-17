@@ -657,3 +657,41 @@ Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
   Not yet done; the current story is "packing is not measurement-safe",
   which is the honest headline.
 
+---
+
+## 2026-09-18: history rewritten to drop AI-attribution trailers
+
+9 commit(s) carried a `Co-Authored-By: Claude ...` trailer, added in error
+against the workspace rule that forbids AI-attribution trailers. GitHub credits
+co-authors as contributors, so a published copy of this repository would list
+one.
+
+Removing a trailer rewrites the commit and every descendant, so 11 of 35
+commits changed SHA. No content changed: `git diff` between the pre-rewrite and
+post-rewrite trees is empty, and commit count, subjects, author and committer
+identities and dates are unchanged.
+
+**No artifact provenance was affected.** Every artifact under `results/raw/`
+records the `git_sha` it was produced at, and all 4,573 of them were produced
+at commits that predate the earliest rewritten one, so every recorded SHA still
+resolves to the same commit. The artifacts are append-only and were *not*
+edited. The full table is given anyway, so the claim can be checked rather than
+taken on trust:
+
+| `git_sha` recorded in artifacts | commit after the rewrite | artifacts |
+|---|---|---|
+| `fc7c2a2c9ad602f22ae45cddf9797cac98b0a636-dirty` | `fc7c2a2c9ad602f22ae45cddf9797cac98b0a636` (plus uncommitted changes) -- unchanged, predates the rewrite | 1896 |
+| `0a9ba7d58907f7156c63029da645aa24a5e407cb` | `0a9ba7d58907f7156c63029da645aa24a5e407cb` -- unchanged, predates the rewrite | 1261 |
+| `cdbdc3765d8db0541833274637d35102f06cfc32` | `cdbdc3765d8db0541833274637d35102f06cfc32` -- unchanged, predates the rewrite | 336 |
+| `961a1947b643933225c453eb801b0b60d8887604-dirty` | `961a1947b643933225c453eb801b0b60d8887604` (plus uncommitted changes) -- unchanged, predates the rewrite | 222 |
+| `6274d7e62c675d3c8608d02183d82a3b3b4f92e9-dirty` | `6274d7e62c675d3c8608d02183d82a3b3b4f92e9` (plus uncommitted changes) -- unchanged, predates the rewrite | 208 |
+| `1410ffde7effa8e9dc594e65494c4ab84c215290-dirty` | `1410ffde7effa8e9dc594e65494c4ab84c215290` (plus uncommitted changes) -- unchanged, predates the rewrite | 204 |
+| `1960a47b0937ba5fa79afa52cc777335df46d989-dirty` | `1960a47b0937ba5fa79afa52cc777335df46d989` (plus uncommitted changes) -- unchanged, predates the rewrite | 144 |
+| `fc7c2a2c9ad602f22ae45cddf9797cac98b0a636` | `fc7c2a2c9ad602f22ae45cddf9797cac98b0a636` -- unchanged, predates the rewrite | 144 |
+| `cdbdc3765d8db0541833274637d35102f06cfc32-dirty` | `cdbdc3765d8db0541833274637d35102f06cfc32` (plus uncommitted changes) -- unchanged, predates the rewrite | 96 |
+| `69da3e72ac6ac694f14ba31f8ef8bc0d234d4515` | `69da3e72ac6ac694f14ba31f8ef8bc0d234d4515` -- unchanged, predates the rewrite | 30 |
+| `0a9ba7d58907f7156c63029da645aa24a5e407cb-dirty` | `0a9ba7d58907f7156c63029da645aa24a5e407cb` (plus uncommitted changes) -- unchanged, predates the rewrite | 24 |
+| `5f07f216bfc79d0622f84fd0fe61a112a78c092a` | `5f07f216bfc79d0622f84fd0fe61a112a78c092a` -- unchanged, predates the rewrite | 8 |
+
+The complete 35-commit mapping is in `docs/sha_map_2026-09-18.tsv`. A `-dirty` suffix
+means the tree carried uncommitted changes when the artifact was written.
