@@ -29,7 +29,7 @@ mode.
 
 ## Hardware
 
-All results come from **MeluXina** (LuxProvide), `gpu` partition:
+All results come from **MeluXina** (LuxProvide), `gpu` partition for ICHEC project:
 
 - 4x NVIDIA A100-SXM4-40GB per node, **full NVLink mesh** (`NV4` between every
   pair, no intra-node PCIe path between GPUs)
