@@ -1,6 +1,6 @@
 """Metric computation from raw request timings.
 
-Two rules from the workspace CLAUDE.md drive every choice here:
+Two rules from the workspace spec drive every choice here:
 
 * **Report median with spread, never a bare mean of one run.** Point estimates
   without an error indication do not go in a figure, so every aggregate this

@@ -44,7 +44,7 @@ export OUTLINES_CACHE_DIR="${LIB_DATA}/vllm_cache/outlines"
 export APPTAINER_CACHEDIR="${LIB_DATA}/apptainer_cache"
 export APPTAINER_TMPDIR="${LIB_DATA}/apptainer_tmp"
 
-# Modules confirmed present on compute nodes (see ../CLAUDE.md).
+# Modules confirmed present on compute nodes (see the workspace spec).
 #
 # LIB_MOD_ENV must be loaded FIRST and is not optional. The EasyBuild module tree
 # lives behind the `env/release/*` meta-module, and it is preloaded on `gpu`

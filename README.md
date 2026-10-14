@@ -29,7 +29,7 @@ mode.
 
 ## Hardware
 
-All results come from **MeluXina** (LuxProvide), `gpu` partition for ICHEC project:
+All results come from the GPU partition of an HPC cluster:
 
 - 4x NVIDIA A100-SXM4-40GB per node, **full NVLink mesh** (`NV4` between every
   pair, no intra-node PCIe path between GPUs)
@@ -205,7 +205,7 @@ sbatch slurm/run_analysis.sh
 
 That job reads only `results/raw/`, writes only `results/figures/` and
 `results/RESULTS.md`, and never invents a value. It runs on the `gpu`
-partition because `p201466` has no CPU allocation, but uses no GPU.
+partition (the allocation it ran under had no CPU hours), but uses no GPU.
 
 Raw artifacts are append-only, written read-only, and carry full provenance:
 git SHA (with a `-dirty` suffix when the tree was not clean), hostname,

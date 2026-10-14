@@ -84,7 +84,7 @@ sacct -u u104240 --starttime=2026-08-24 --endtime=2026-10-01 \
 | September 2026 | p201466  | gpu       | 0.135      | ~130 (fresh) | ~129.9 |
 
 August finished with roughly **96 of 126** node-hours consumed on `p201466`,
-close to the ~100 h estimate carried in the workspace CLAUDE.md. September is
+close to the ~100 h estimate carried in the workspace spec. September is
 fresh at ~130 h and the sweeps are already in place, so the remaining work is
 (a) reruns and analysis, and (b) the TP=8 multi-node attempt.
 

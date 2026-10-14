@@ -22,7 +22,7 @@ The split of responsibilities is the whole design:
 Capability declaration is not decoration. When a sweep asks for a knob an engine
 does not support, the runner records an ``unsupported`` artifact rather than
 silently dropping the point or, far worse, substituting the other engine's
-number. See the non-negotiable rules in the workspace CLAUDE.md.
+number. See the non-negotiable rules in the workspace spec.
 """
 
 from __future__ import annotations

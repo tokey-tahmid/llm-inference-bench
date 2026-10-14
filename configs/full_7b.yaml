@@ -5,7 +5,7 @@
 # 12 server groups, one per array task, so twelve nodes measure concurrently.
 # N=5 rather than the N=3 minimum: the phase-1 data showed TTFT spread of ~11%
 # at c=32 against 0.1% at c=1, so the loaded points have visible variance and
-# CLAUDE.md calls for more repetitions exactly there.
+# the workspace spec calls for more repetitions exactly there.
 
 name: full-7b
 

@@ -3,7 +3,7 @@
 #
 #   sbatch slurm/run_analysis.sh
 #
-# This is THE reproduce command required by ../CLAUDE.md rule 4. It reads only
+# This is THE reproduce command required by the workspace spec rule 4. It reads only
 # results/raw/ and writes only results/figures/. It never touches raw artifacts
 # and never invents a value: an analysis that has no data to plot says so and
 # exits non-zero rather than producing an empty figure.

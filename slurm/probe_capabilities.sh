@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-# See ../CLAUDE.md: module is uninitialised in batch and the system init is not
+# See the workspace spec: module is uninitialised in batch and the system init is not
 # strict-mode clean.
 if ! type module >/dev/null 2>&1; then
     set +eu

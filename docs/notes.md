@@ -30,7 +30,7 @@ seconds and catches what a local check normally would.
 ### GPU topology: uniform NVLink, so an intra-node PCIe contrast does not exist
 
 `nvidia-smi topo -m` reports `NV4` between **every** GPU pair on a node. There is
-no PCIe path between GPUs to compare against. The workspace CLAUDE.md anticipated
+no PCIe path between GPUs to compare against. The workspace spec anticipated
 "NVLink vs PCIe paths should be visible in the numbers", and intra-node they
 cannot be: every TP≤4 configuration communicates over the same fabric. The only
 place an interconnect contrast is observable is the multi-node boundary, where TP=8
@@ -614,9 +614,9 @@ the fabricated data point that was not written: infinite.**
 
 ## 2026-09-02 — Definition-of-done status for P1
 
-Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
+Checked against the workspace spec "Definition of done" for Project 1.
 
-| CLAUDE.md requirement | Status | Evidence |
+| Spec requirement | Status | Evidence |
 |---|---|---|
 | Real measurements committed for both backends across the full sweep | **MET** | 4,573 raw artifacts across 11 sweeps; both vLLM and SGLang produced measured configs (see `results/RESULTS.md` inventory). Some SGLang configs launch-failed and are recorded as such (32B at TP=4). |
 | N>=3 repetitions | **MET** | full-7b sweep uses N=5, length-sweep and specdec sweeps use N=3, packing measurement uses N=3. Warmup rep recorded and excluded. |
@@ -659,10 +659,9 @@ Checked against the workspace `CLAUDE.md` "Definition of done" for Project 1.
 
 ---
 
-## 2026-09-18: history rewritten to drop AI-attribution trailers
+## 2026-09-18: history rewritten to remove incorrect co-author trailers
 
-9 commit(s) carried a `Co-Authored-By: Claude ...` trailer, added in error
-against the workspace rule that forbids AI-attribution trailers. GitHub credits
+9 commit(s) carried a co-author trailer added in error. GitHub credits
 co-authors as contributors, so a published copy of this repository would list
 one.
 

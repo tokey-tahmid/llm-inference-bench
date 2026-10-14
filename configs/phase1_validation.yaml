@@ -1,6 +1,6 @@
 # Phase 1: pipeline validation, NOT a result.
 #
-# Working agreement #2 in ../CLAUDE.md: get one real measurement end to end
+# Working agreement #2 in the workspace spec: get one real measurement end to end
 # before widening anything. This sweep exists to prove submit -> collect -> parse
 # -> plot works against real hardware, on the smallest matrix that exercises
 # every stage. Two concurrency points is the minimum that produces a line rather

@@ -212,7 +212,7 @@ stage_images() {
 
 # --- stage: models ----------------------------------------------------------
 # Only ungated models: there is no HuggingFace token on this system and the
-# Llama repos are gated. See ../CLAUDE.md "Settled model decisions".
+# Llama repos are gated. See the workspace spec "Settled model decisions".
 MODELS=(
     "Qwen/Qwen2.5-7B-Instruct"
     "Qwen/Qwen2.5-32B-Instruct"

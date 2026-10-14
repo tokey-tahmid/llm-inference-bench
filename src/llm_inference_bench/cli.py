@@ -87,7 +87,7 @@ def cmd_expand(args: argparse.Namespace) -> int:
     print("  This is a planning estimate, not a measurement.")
     if hours > 15:
         print(
-            "\n  WARNING: exceeds the ~15 node-hour single-sweep threshold in CLAUDE.md.\n"
+            "\n  WARNING: exceeds the ~15 node-hour single-sweep threshold in the workspace spec.\n"
             "  Have the design sanity-checked before submitting."
         )
     return 0
